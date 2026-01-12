@@ -7,10 +7,13 @@ Statistics.mean(gp::GP, x::Real) = mean_value(gp.mean, x)
 
 Statistics.cov(gp::GP, x::AbstractVector, y::Real) = gp.kernel.(x, y)
 Statistics.cov(gp::GP, x::Real, y::AbstractVector) = gp.kernel.(x, y)'
+Statistics.cov(gp::GP, x::Real) = kernelmatrix(gp.kernel, x)
 
 function cov!(c::AbstractVector, gp::GP, x::AbstractVector, y::Real)
     @. c = gp.kernel(x, y)
 end
+
+
 
 struct RGP{bT,mT,BT,RT,cT}
     gp::GP

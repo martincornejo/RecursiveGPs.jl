@@ -1,4 +1,4 @@
-function make_ekf(components, dynamics, measurement::Function, R2::Function; Ajac=nothing, Cjac=nothing, p::NamedTuple=(;))
+function make_comb_ekf(components, dynamics, measurement::Function, R2::Function; Ajac=nothing, Cjac=nothing, p::NamedTuple=(;))
     ids = keys(components)
     x0 = ComponentVector(; (id => components[id].μ0 for id in ids)...)
 
@@ -41,7 +41,33 @@ function LLPF.covariance(kf, id::Symbol)
     cx[id, id]
 end
 
-function predict_gp(kf, b, id::Symbol)
+
+function measurement_kf(kf::LowLevelParticleFilters.AbstractExtendedKalmanFilter{IPD}, x⁻, Σ⁻, u, p=LowLevelParticleFilters.parameters(kf), t::Real=index(kf); R2=LowLevelParticleFilters.get_mat(kf.measurement_model.R2, x⁻, u, p, t)) where IPD
+    (; Cjac, measurement) = kf.measurement_model
+    ny = kf.kf.ny
+    if false ### False for now, IPD not working well here
+        μ = zeros(ny)
+        measurement(μ, x⁻, u, p, t)
+    else
+        μ = measurement(x⁻, u, p, t)
+    end
+
+    C = Cjac(x⁻, u, p, t)
+    S = LowLevelParticleFilters.symmetrize(C * Σ⁻ * C') + R2
+    (μ, S)
+end
+
+function predict_kf!(
+    kf,
+    u,
+)  
+    predict!(kf, u)
+    μ, S = measurement_kf(kf, kf.x, kf.R, u)
+    σ = sqrt.(S)
+    (; μ = μ , σ = σ)
+end
+
+function predict_gp(kf, b::AbstractArray, id::Symbol)
     (; gp, b0, μ0, Σ0⁻¹) = kf.p[id]
     x = state(kf, id)
     R = covariance(kf, id)
@@ -49,13 +75,13 @@ function predict_gp(kf, b, id::Symbol)
     m = mean(gp, b)
     μ = H * (x - μ0) + m
 
-    R2 = cov(gp, b) - H * cov(gp, b0, b) #eq.7 
+    R2 = cov(gp,b) - H * cov(gp, b0, b) #eq.7 
     Σ = R2 + H * R * H' #eq.9
     σ = sqrt.(diag(Σ))
     (; μ, σ)
 end
 
-function predict_gp(kf, b, x, R, id::Symbol)
+function predict_gp(kf, b::AbstractArray, x::AbstractArray, R::AbstractMatrix, id::Symbol)
     (; xid, Σid) = kf.p
     (; gp, b0, μ0, Σ0⁻¹) = kf.p[id]
 
@@ -69,9 +95,44 @@ function predict_gp(kf, b, x, R, id::Symbol)
     m = mean(gp, b)
     μ = H * (x´ - μ0) + m
 
-    R2 = cov(gp, b) - H * cov(gp, b0, b) #eq.7 
+    R2 = cov(gp,b) - H * cov(gp, b0, b) #eq.7 
     Σ = R2 + H * R´ * H' #eq.9
     σ = sqrt.(diag(Σ))
     (; μ, σ)
+end
+
+function predict_gp(kf, b::Real, id::Symbol)
+    (; gp, b0, μ0, Σ0⁻¹) = kf.p[id]
+    x = state(kf, id)
+    R = covariance(kf, id)
+    H = cov(gp, b, b0) * Σ0⁻¹
+    m = mean(gp, b)
+    μ = H * (x - μ0) + m
+
+    R2 = gp.kernel(b,b) - H * cov(gp, b0, b) #eq.7 
+    Σ = R2 + H * R * H' #eq.9
+    σ = sqrt(Σ)
+    (; μ = [μ],σ =[σ])
+end
+
+
+function predict_gp(kf, b::Real, x::AbstractArray, R::AbstractMatrix, id::Symbol)
+    (; xid, Σid) = kf.p
+    (; gp, b0, μ0, Σ0⁻¹) = kf.p[id]
+
+    cx = ComponentVector(x, xid)
+    x´ = cx[id]
+
+    cR = ComponentMatrix(R, Σid)
+    R´ = cR[id, id]
+
+    H = cov(gp, b, b0) * Σ0⁻¹
+    m = mean(gp, b)
+    μ = H * (x´ - μ0) + m
+
+    R2 = gp.kernel(b,b) - H * cov(gp, b0, b) #eq.7 
+    Σ = R2 + H * R´ * H' #eq.9
+    σ = sqrt(Σ)
+    (; μ = [μ],σ =[σ])
 end
 

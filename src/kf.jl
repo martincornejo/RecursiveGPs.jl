@@ -21,7 +21,7 @@ function fCjac(x, u, p, t)
     # return Cjac
 end
 
-function make_kf(rgp::RGP)
+function make_ekf(rgp::RGP)
     (; μ0, Σ0) = rgp
     nb = length(μ0)
     p = (;
@@ -40,7 +40,7 @@ function make_kf(rgp::RGP)
 end
 
 
-function predict_gp(kf, rgp, b)
+function predict_gp(kf, b)
     (; gp, b0, μ0, Σ0⁻¹) = kf.p.rgp
     H = cov(gp, b, b0) * Σ0⁻¹
     m = mean(gp, b)
