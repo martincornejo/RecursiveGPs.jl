@@ -48,7 +48,6 @@ function RGP(gp::GP, b0::T) where T<:AbstractArray
         k⁻=DiffCache(similar(b0), csize),
         H=DiffCache(similar(b0'), csize),
         Δg=DiffCache(similar(b0)), # <- use DiffCache #
-        #TODO; USe diff cahce for dg
     )
 
     RGP(gp, b0, μ0, Σ0, Σ0⁻¹, R1, cache)
@@ -81,7 +80,7 @@ function measurement_gp(rgp::RGP, g::AbstractArray, b::Real)
     #                H
     cov!(k, gp, b0, b) # k = cov(gp, b, b0)
     mul!(H, k', Σ0⁻¹) # H = k' * Σ0⁻¹
-    Δg .= g - μ0 # TODO: DiffCache
+    Δg .= g - μ0 
     # Δg .= g .- μ0
     muladd(H, Δg, mean(gp, b)) # H * (g - μ0) + m
 end

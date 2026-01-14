@@ -1,9 +1,11 @@
-function make_comb_ekf(components, dynamics, measurement::Function, R2::Function; Ajac=nothing, Cjac=nothing, p::NamedTuple=(;))
+function make_ekf(components, dynamics, measurement::Function, R2::Function; Ajac=nothing, Cjac=nothing, p::NamedTuple=(;), ny::Int64 = 1, nu::Int64 = 1)
     ids = keys(components)
-    x0 = ComponentVector(; (id => components[id].μ0 for id in ids)...)
 
-    Σ0 = false .* x0 * x0'
-    R1 = false .* x0 * x0'
+    T = mapreduce(c -> promote_type(eltype(c.μ0), eltype(c.Σ0), eltype(c.R1)), promote_type, components; init=Float64)
+    x0 = ComponentVector{T}(; (id => components[id].μ0 for id in ids)...)
+
+    Σ0 = zero(T) .* x0 * x0'
+    R1 = zero(T) .* x0 * x0'
     
     for id in ids
         component = components[id]
@@ -14,10 +16,7 @@ function make_comb_ekf(components, dynamics, measurement::Function, R2::Function
     d0 = LLPF.SimpleMvNormal(x0, Σ0)
     xid = getaxes(x0)
     Σid = getaxes(Σ0)
-
     nx = length(x0)
-    nu = 1
-    ny = 1
 
     p = (;
         xid,
