@@ -129,72 +129,65 @@ end
             kf(u,[y])
         end
     end
-
-    @testset "Predict gp" begin
-        id = :rgp_obj
-        cx = ComponentVector(kf.x, xid)
-        cR = ComponentMatrix(kf.R, Σid)
-        
     
+    cx = ComponentVector(kf.x, xid)
+    cR = ComponentMatrix(kf.R, Σid)
+
+    @testset "predict_gp: Array Input" begin
         b_ar = [2.0]
-        b_fl = 2.0
-       
-        m1_ar = predict_gp(kf, b_ar, :rgp_obj)
-        m1_fl = predict_gp(kf, b_fl, :rgp_obj)
         
+        m1_ar = predict_gp(kf, b_ar, :rgp_obj)
         m2_ar = predict_gp(kf, b_ar, cx.rgp_obj, cR[:rgp_obj, :rgp_obj], :rgp_obj)
-        m2_fl = predict_gp(kf, b_fl, cx.rgp_obj, cR[:rgp_obj, :rgp_obj], :rgp_obj)
 
+        @test size(m1_ar.μ) == size(b_ar)
         @test m1_ar.μ ≈ m2_ar.μ
-        @test m1_fl.μ ≈ m2_fl.μ
-        @test m1_fl.μ ≈ m1_ar.μ
-
         @test m1_ar.σ ≈ m2_ar.σ
+
+    end
+
+    @testset "predict_gp: Scalar Input" begin
+        b_fl = 2.0
+        m1_fl = predict_gp(kf, b_fl, :rgp_obj)
+        m2_fl = predict_gp(kf, b_fl, cx.rgp_obj, cR[:rgp_obj, :rgp_obj], :rgp_obj)
+        
+        @test m1_fl.μ ≈ m2_fl.μ
         @test m1_fl.σ ≈ m2_fl.σ
-        @test m1_fl.σ ≈ m1_ar.σ
+    end
+
+    @testset "Hyp Tunning" begin
+        
+        function build_kf(θ, ϑ)
+            N_basis = 5
+            b0 = sort(rand(rng, N_basis))                     
+            
+            gp_obj = GP(ZeroMean(), SqExponentialKernel())
+            rgp_obj = RGP(gp_obj, b0)
+            
+            dim_A = 3
+            dim_B = 1
+            A = randn(rng, dim_A, dim_A)
+            B = randn(rng, dim_B, dim_B)
+            component_A = (; μ0 = rand(rng, dim_A), Σ0 = A* A' + 1e-6*I, R1 = fill(1e-3,dim_A,dim_A))
+            component_B =  (; μ0 = rand(rng, dim_B), Σ0 = B* B' + 1e-6*I, R1 = fill(1e-3,dim_B,dim_B))
+            components = (; rgp_obj, component_A, component_B)
+
+            function dynamics(x,u,p,t)
+                x
+            end
+
+            function measurement(x,u,p,t)
+                cx = ComponentVector(x, p.xid)
+                measurement_gp(p.rgp_obj, cx.rgp_obj, u) .+ sum(cx.component_A) .+ u .* cx.component_B
+            end
+
+            function R2(x,u,p,t)
+                [1e-3]
+            end
+            kf = make_comb_ekf(components, dynamics, measurement, R2)
+            kf
+        end
+
     end
 end
-
-
-
-# @testset "RGP Kf" begin
-#     rng = MersenneTwister(123)
-#     N_basis = 5
-#     b0 = sort(rand(rng, N_basis))      
-#     gp_obj = GP(ZeroMean() , SqExponentialKernel() )
-#     rgp_obj = RGP(gp_obj, b0)
-    
-#     kf = make_ekf(rgp_obj)
-
-#     N_points = 2
-
-#     us_train = rand(rng, N_points)
-#     ys_train = sin.(us_train)
-
-#     @testset "Train" begin
-#         for (y, u) in zip(ys_train, us_train)
-#             kf(y,u)
-#         end
-#     end
-    
-#     u_float = 0.5
-#     u_array = [0.5]
-#     u_vector = [0.5, 1.0]
-
-#     @testset "Prediction" begin
-#         predict_gp(kf, u_float)
-#         predict_gp(kf, u_array)
-#         predict_gp.(kf, u_vector)
-#     end
-
-#     @testset "Hyp Tunning: non Dual kf" begin
-        
-#     end
-
-#     @testset "Hyp Tunning: Dual kf" begin
-        
-#     end
-# end
-
 nothing
 

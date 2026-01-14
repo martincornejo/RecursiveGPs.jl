@@ -1,4 +1,5 @@
 # Extends AbstractGPs to evaluate `mean` and `cov` of a GP to single values (instead of `Vector`s only)
+# TODO: Add docstring outside fucntion. Follow package example
 mean_value(m::ZeroMean, x::Real) = zero(x)
 mean_value(m::ConstMean, x::Real) = m.c
 mean_value(m::CustomMean, x::Real) = m.f(x)
@@ -13,7 +14,12 @@ function cov!(c::AbstractVector, gp::GP, x::AbstractVector, y::Real)
     @. c = gp.kernel(x, y)
 end
 
-
+function cov!(c::AbstractVector, gp::GP{<:Any,<:KernelSum}, x::AbstractVector, y)
+    fill!(c, 0.0)
+    for kernel in gp.kernel.kernels
+        @. c += kernel(x, y)
+    end
+end
 
 struct RGP{bT,mT,BT,RT,cT}
     gp::GP
@@ -41,7 +47,8 @@ function RGP(gp::GP, b0::T) where T<:AbstractArray
         k=DiffCache(similar(b0), csize),
         k⁻=DiffCache(similar(b0), csize),
         H=DiffCache(similar(b0'), csize),
-        # Δg=similar(b0), # <- use DiffCache
+        Δg=DiffCache(similar(b0)), # <- use DiffCache #
+        #TODO; USe diff cahce for dg
     )
 
     RGP(gp, b0, μ0, Σ0, Σ0⁻¹, R1, cache)
@@ -67,13 +74,14 @@ function measurement_gp(rgp::RGP, g::AbstractArray, b::Real)
     T = eltype(Σ0⁻¹) <: ForwardDiff.Dual ? ForwardDiff.Dual : typeof(b)
     k = get_tmp(cache.k, T)
     H = get_tmp(cache.H, T)
+    Δg = get_tmp(cache.Δg, g)
 
     # (cov(gp, b, b0) * Σ0⁻¹) * (g - μ0) + mean(gp, b)
     #        k                    Δg
     #                H
     cov!(k, gp, b0, b) # k = cov(gp, b, b0)
     mul!(H, k', Σ0⁻¹) # H = k' * Σ0⁻¹
-    Δg = g - μ0
+    Δg .= g - μ0 # TODO: DiffCache
     # Δg .= g .- μ0
     muladd(H, Δg, mean(gp, b)) # H * (g - μ0) + m
 end
