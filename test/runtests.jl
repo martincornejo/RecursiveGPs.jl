@@ -1,14 +1,15 @@
 using Test
-using .RecursiveGPs
+using RecursiveGPs
 using Random
 using AbstractGPs
 using LinearAlgebra
 using ComponentArrays
 using ForwardDiff
+using LowLevelParticleFilters
 using Optimization
 using OptimizationOptimJL
 using LineSearches
-using LowLevelParticleFilters
+
 
 
 @testset "RGP" begin
