@@ -56,7 +56,7 @@ A "Recursive Gaussian Process" structure
 - `Σ0`: Initial covariance matrix at `b0`.
 - `Σ0⁻¹`: Pre-computed inverse of `Σ0` (used for calculating the Kalman Gain/Projection matrix).
 - `R1`: Process noise matrix (initialized to zeros).
-- `cache`: A `NamedTuple` containing `DiffCache` arrays (from `PreallocationTools.jl`) to support ForwardDiff automatic differentiation without allocations.
+- `cache`: A `NamedTuple` containing `DiffCache` arrays (from `PreallocationTools.jl`).
 """
 struct RGP{bT,mT,BT,RT,cT}
     gp::GP
@@ -85,7 +85,7 @@ function RGP(gp::GP, b0::T) where T<:AbstractArray
     Σ0⁻¹ = inv(Σ0)
 
     R1 = zeros(nb, nb)
-
+    # TODO: Correct diffcache for Dual mean in Hyp optimization
     csize = ForwardDiff.pickchunksize(length(b0) + 2)
     cache = (;
         k=DiffCache(similar(b0), csize),

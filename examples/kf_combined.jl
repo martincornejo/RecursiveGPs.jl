@@ -4,63 +4,63 @@ using AbstractGPs
 using LinearAlgebra
 using ComponentArrays
 using CairoMakie
-using StatsBase
-using LowLevelParticleFilters
+
 
 #### KF COMBINED-RGPs-####
-## Generating data and applying Z-score normalization
+## === dataset
 begin
-    fun_1(x) = sin(x)
-    fun_2(x) = 25 * x / (1 + x^2) * cos(x)
-    cte = 2
-    fun(x,z) = z * fun_1(x) + fun_2(x) + z * x/cte
-    n_points = 100
-    ts = collect(range(0.0,100, length=n_points))
-    xs = collect(range(-10,10,length=n_points))
-    zs = collect(range(0,1,length=n_points))
-    us = [(;x, z) for (x, z) in zip(xs, zs)]
-    
-    gt = [fun(x,z) + sqrt(0.1) * randn() for (x, z) in zip(xs, zs)]
-    ys = gt .+ sqrt(0.1) * randn(n_points)
+    f1(b) = exp(b)
+    f2(b) = 0.1 + 0.5 * b + 0.1 * sinpi(b * 2) # <- function to infer
+    df = let n = 100
+        rng = Xoshiro(123)
+        ts = collect(range(0,100, n))
+        b = 0.1 .+ rand(rng, n) / 1.5
+        i = 0.2 .* randn(rng, n)
+        gt = @. f1(b) + i * f2(b)
+        y = gt
+        DataFrame(; ts,gt, b, i, y)
+    end
+
+    ys = [SA[y] for y in df.y]
+    us = [[x.b, x.i] for x in eachrow(df)]
 end
 
 ## Generating RGP and Component
 begin
-    n_basis = 20
-    limits = extrema(xs_tr)
-    b0 = collect(range(-12, 12, length=n_basis))               
-    
-    gp_1 = GP(ZeroMean(), SqExponentialKernel())
-    rgp_1 = RGP(gp_1, b0)
-    
-    gp_2 = GP(ZeroMean(), SqExponentialKernel())
-    rgp_2 = RGP(gp_2, b0)
+    b0 = collect(0:0.05:1)
+    kernel1 = 0.02 * with_lengthscale(SEKernel(), 0.1)
+    rgp1 = RGP(kernel1, b0)
 
-    cte_A = (; μ0 = [1], Σ0 =[0.5], R1 = [1e-6] )
-    components = (; rgp_1, rgp_2, cte_A)
 
-    ## Kf functions
-    function dynamics(x,u,p,t)
-        x
+    kernel2 = 0.02 * with_lengthscale(SEKernel(), 0.1)
+    rgp2 = RGP(kernel2, b0)
+
+    components = (; a=rgp1, b=rgp2)
+
+    dynamics(x, u, p, t) = x
+
+    function measurement(x, u, p, t)
+        (; xid) = p
+        xc = ComponentVector(x, xid)
+        μ1 = measurement_gp(p.a, xc.a, u[1])
+        μ2 = measurement_gp(p.b, xc.b, u[1])
+        μ1 + u[2] * μ2 |> SVector{1}
     end
 
-    function measurement(x,u,p,t)
-        cx = ComponentVector(x, p.xid)
-        u.z * measurement_gp(p.rgp_1, cx.rgp_1, u.x) .+ measurement_gp(p.rgp_2, cx.rgp_2, u.x) .+ u.x * u.z *cx.cte_A
+    function R2(x, u, p, t)
+        R1 = uncertainty_gp(p.a, u[1])
+        R2 = uncertainty_gp(p.b, u[1])
+        R1 + u[2]^2 * R2 |> SMatrix{1,1}
     end
 
-    function R2(x,u,p,t)
-        [0.01]
-    end
 end
 
 ## Instantiation and Training
 begin
-    kf = make_comb_ekf(components, dynamics, measurement, R2)
+    kf = make_ekf(components, dynamics, measurement, R2)
     for (u, y) in zip(us, ys)
-        kf(u,[y])
+        kf(u,y)
     end
-
 end
 
 ## Plot Output
@@ -74,14 +74,16 @@ begin
     
     fig = Figure()
     ax = CairoMakie.Axis(fig[1, 1])
-    lines!(ax, ts, gt, label = "GT")
-    lines!(ax, ts, ys_pred.μ, color = :orange, label = "Prediction")
+    lines!(ax, df.ts, df.gt, label = "GT")
+    lines!(ax, df.ts, ys_pred.μ, color = :orange, label = "Prediction")
     band!(ax, 
-        ts, 
+        df.ts, 
         ys_pred.μ .+ 2ys_pred.σ,
         ys_pred.μ .- 2ys_pred.σ,
         color = :orange,
         alpha=0.3)
+
+    scatter!(ax, ts, df.y, color = :red, label = "Train Points")
     axislegend(ax)
     fig
 end
@@ -94,25 +96,30 @@ begin
     fig = Figure()
     axs = [CairoMakie.Axis(fig[i, 1]) for i in 1:2]
     
-    lines!(axs[1],b0, fun_1.(b0) , label = "GT")
-    lines!(axs[1], b0, cx.rgp_1, color = :orange, label = "Prediction")
+    axs[1].title = "RGP 1: exp(b) function"
+    lines!(axs[1], b0, f1.(b0) , label = "GT")
+    lines!(axs[1], b0, cx.a, color = :orange, label = "Prediction")
     band!(axs[1], 
         b0, 
-        cx.rgp_1 .+ 2cσ.rgp_1,
-        cx.rgp_1 .- 2cσ.rgp_1,
+        cx.a .+ 2cσ.a,
+        cx.a .- 2cσ.a,
         color = :orange,
         alpha=0.3)
 
-    lines!(axs[2],b0, fun_2.(b0) , label = "GT")
-    lines!(axs[2],b0, cx.rgp_2, color = :orange, label = "Prediction")
+    scatter!(axs[1], df.b, f1.(df.b), color = :red, label = "Train Points")
+
+    axs[2].title = "RGP 2: 0.1 + 0.5 * b + 0.1 * sinpi(b * 2)"
+    lines!(axs[2],b0, f2.(b0) , label = "GT")
+    lines!(axs[2],b0, cx.b, color = :orange, label = "Prediction")
     band!(axs[2], 
         b0, 
-        cx.rgp_2 .+ 2cσ.rgp_2,
-        cx.rgp_2 .- 2cσ.rgp_2,
+        cx.b .+ 2cσ.b,
+        cx.b .- 2cσ.b,
         color = :orange,
         alpha=0.3)
-    
-    axislegend.(axs)
+    scatter!(axs[2], df.b, f2.(df.b), color = :red, label = "Train Points")
+
+    axislegend.(axs, position = :rb)
     fig
 end
 
