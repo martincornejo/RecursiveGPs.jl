@@ -85,13 +85,13 @@ function RGP(gp::GP, b0::T) where T<:AbstractArray
     Σ0⁻¹ = inv(Σ0)
 
     R1 = zeros(nb, nb)
-    # TODO: Correct diffcache for Dual mean in Hyp optimization
+
     csize = ForwardDiff.pickchunksize(length(b0) + 2)
     cache = (;
         k=DiffCache(similar(b0), csize),
         k⁻=DiffCache(similar(b0), csize),
         H=DiffCache(similar(b0'), csize),
-        Δg=DiffCache(similar(b0)), # <- use DiffCache #
+        Δg=DiffCache(similar(b0), csize), # <- use DiffCache #
     )
 
     RGP(gp, b0, μ0, Σ0, Σ0⁻¹, R1, cache)
@@ -132,7 +132,7 @@ Computes the projection:
 # References
  - M. F. Huber, "Recursive Gaussian process regression," 2013 IEEE International Conference on Acoustics, Speech and Signal Processing, Vancouver, BC, Canada, 2013, pp. 3362-3366, doi: 10.1109/ICASSP.2013.6638281.
 """
-#TODO: Alternative when inputs is an array/1D vector
+
 function measurement_gp(rgp::RGP, g::AbstractArray, b::Real)
     (; gp, b0, μ0, Σ0⁻¹, cache) = rgp
     # (; k, H) = cache
@@ -144,13 +144,15 @@ function measurement_gp(rgp::RGP, g::AbstractArray, b::Real)
 
     # (cov(gp, b, b0) * Σ0⁻¹) * (g - μ0) + mean(gp, b)
     #        k                    Δg
-    #                H
+    #                H~
+
     cov!(k, gp, b0, b) # k = cov(gp, b, b0)
     mul!(H, k', Σ0⁻¹) # H = k' * Σ0⁻¹
     Δg .= g - μ0 
     # Δg .= g .- μ0
     muladd(H, Δg, mean(gp, b)) # H * (g - μ0) + m
 end
+
 
 raw"""
     uncertainty_gp(rgp::RGP, b::Real)
@@ -184,4 +186,6 @@ function uncertainty_gp(rgp::RGP, b::Real)
     @. k⁻ = -k
     muladd(H, k⁻, gp.kernel(b, b)) # kb - H * k
 end
+
+
 

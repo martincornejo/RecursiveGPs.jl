@@ -88,17 +88,24 @@ A tuple `(μ, S)` where:
 - `μ`: The expected measurement ``h(x^-, u, p, t)``.
 - `S`: The innovation covariance ``C \\Sigma^- C^T + R_2``.
 """
-function measurement_kf(kf::LowLevelParticleFilters.AbstractExtendedKalmanFilter{IPD}, x⁻, Σ⁻, u, p=LowLevelParticleFilters.parameters(kf), t::Real=index(kf); R2=LowLevelParticleFilters.get_mat(kf.measurement_model.R2, x⁻, u, p, t)) where IPD
-    (; Cjac, measurement) = kf.measurement_model
+function measurement_kf(kf::LowLevelParticleFilters.AbstractKalmanFilter, x⁻, Σ⁻, u,
+                        measurement_model::LowLevelParticleFilters.EKFMeasurementModel{IPM} = kf.measurement_model,
+                        p=LowLevelParticleFilters.parameters(kf),
+                        t::Real=index(kf);
+                        R2=LowLevelParticleFilters.get_mat(kf.measurement_model.R2, x⁻, u, p, t)) where IPM
+
+    (; measurement, Cjac) = measurement_model
     ny = kf.kf.ny
-    if false ### TODO: False for now, IPD not working well here
+    C = Cjac(x⁻, u, p, t)
+
+    if IPM
         μ = zeros(ny)
         measurement(μ, x⁻, u, p, t)
     else
         μ = measurement(x⁻, u, p, t)
     end
 
-    C = Cjac(x⁻, u, p, t)
+    
     S = LowLevelParticleFilters.symmetrize(C * Σ⁻ * C') + R2
     (μ, S)
 end
@@ -129,7 +136,7 @@ end
 
 """
     predict_gp(kf, b, id::Symbol)
-    predict_gp(kf, bs::AbstractArray, x, R, id::Symbol)
+    predict_gp(kf, bs::AbstractArray, x::AbstractArray, R::AbstractMatrix, id::Symbol)
 
 Project the Gaussian Process component of the EKF state to new input point(s).
 
