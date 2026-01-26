@@ -1,6 +1,3 @@
-# PAPER NAME
-Accompanying code to the paper.......
-
 # Recursive Gaussian Procceses/Usage
 The package implements (cite) and allows the instantiation of Kalman Filter (KF) objects from LowLevelParticleFilters.jl through the definition of Recursive Gaussian Processes (RGPs) and named tuples with an initial mean $\mu0$ and covariance matrix $\Sigma$. 
 Hyp-paramterer tuning can be done by using OptimizationOptimJL package.
