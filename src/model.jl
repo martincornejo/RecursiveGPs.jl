@@ -1,4 +1,3 @@
-
 """
     make_ekf(components, dynamics, measurement, R2; Ajac=nothing, Cjac=nothing, p=(;), ny=1, nu=1)
 
@@ -16,15 +15,15 @@ Constructs an `ExtendedKalmanFilter` from `LowLevelParticleFilters.jl` using a s
 - An `ExtendedKalmanFilter` initialized with a `ComponentVector` state and structured covariance matrices.
 """
 
-function make_ekf(components::NamedTuple, dynamics, measurement::Function, R2::Function; Ajac=nothing, Cjac=nothing, p::NamedTuple=(;), ny::Int64 = 1, nu::Int64 = 1)
+function make_ekf(components::NamedTuple, dynamics, measurement::Function, R2::Function; Ajac = nothing, Cjac = nothing, p::NamedTuple = (;), ny::Int64 = 1, nu::Int64 = 1)
     ids = keys(components)
 
-    T = mapreduce(c -> promote_type(eltype(c.μ0), eltype(c.Σ0), eltype(c.R1)), promote_type, components; init=Float64)
+    T = mapreduce(c -> promote_type(eltype(c.μ0), eltype(c.Σ0), eltype(c.R1)), promote_type, components; init = Float64)
     x0 = ComponentVector{T}(; (id => components[id].μ0 for id in ids)...)
 
     Σ0 = zero(T) .* x0 * x0'
     R1 = zero(T) .* x0 * x0'
-    
+
     for id in ids
         component = components[id]
         Σ0[id, id] = component.Σ0
@@ -40,28 +39,25 @@ function make_ekf(components::NamedTuple, dynamics, measurement::Function, R2::F
         xid,
         Σid,
         components...,
-        p...
+        p...,
     )
 
-    ExtendedKalmanFilter(dynamics, measurement, R1, R2, d0; Ajac, Cjac, nx, nu, ny, p) # , Ajac=fAjac, Cjac=fCjac)
+    return ExtendedKalmanFilter(dynamics, measurement, R1, R2, d0; Ajac, Cjac, nx, nu, ny, p) # , Ajac=fAjac, Cjac=fCjac)
 end
 
 """
-    LLPF.state(kf, id::Symbol)
+    state(kf, id::Symbol)
 
 Extracts the mean vector of a specific sub-component `id` from the current filter state.
-Uses `ComponentArrays.jl` indexing to retrieve the slice associated with the component ID.
-# Arguments
- - 
 """
 function LLPF.state(kf, id::Symbol)
     (; xid) = kf.p
     cx = ComponentVector(kf.x, xid)
-    cx[id]
+    return cx[id]
 end
 
 """
-    LLPF.covariance(kf, id::Symbol)
+    covariance(kf, id::Symbol)
 
 Extracts the covariance sub-matrix of a specific sub-component `id` from the current filter covariance.
 Retrieves the diagonal block \$Σ_{id, id}\$ using the saved axes in the filter parameters.
@@ -69,7 +65,7 @@ Retrieves the diagonal block \$Σ_{id, id}\$ using the saved axes in the filter 
 function LLPF.covariance(kf, id::Symbol)
     (; Σid) = kf.p
     cx = ComponentMatrix(kf.R, Σid)
-    cx[id, id]
+    return cx[id, id]
 end
 
 """
@@ -88,11 +84,13 @@ A tuple `(μ, S)` where:
 - `μ`: The expected measurement ``h(x^-, u, p, t)``.
 - `S`: The innovation covariance ``C \\Sigma^- C^T + R_2``.
 """
-function measurement_kf(kf::LowLevelParticleFilters.AbstractKalmanFilter, x⁻, Σ⁻, u,
-                        measurement_model::LowLevelParticleFilters.EKFMeasurementModel{IPM} = kf.measurement_model,
-                        p=LowLevelParticleFilters.parameters(kf),
-                        t::Real=index(kf);
-                        R2=LowLevelParticleFilters.get_mat(kf.measurement_model.R2, x⁻, u, p, t)) where IPM
+function measurement_kf(
+        kf::LLPF.AbstractKalmanFilter, x⁻, Σ⁻, u,
+        measurement_model::LLPF.EKFMeasurementModel{IPM} = kf.measurement_model,
+        p = LLPF.parameters(kf),
+        t::Real = index(kf);
+        R2 = LLPF.get_mat(kf.measurement_model.R2, x⁻, u, p, t)
+    ) where {IPM}
 
     (; measurement, Cjac) = measurement_model
     ny = kf.kf.ny
@@ -105,9 +103,9 @@ function measurement_kf(kf::LowLevelParticleFilters.AbstractKalmanFilter, x⁻, 
         μ = measurement(x⁻, u, p, t)
     end
 
-    
-    S = LowLevelParticleFilters.symmetrize(C * Σ⁻ * C') + R2
-    (μ, S)
+
+    S = LLPF.symmetrize(C * Σ⁻ * C') + R2
+    return (μ, S)
 end
 
 """
@@ -124,44 +122,11 @@ A `NamedTuple` `(; μ, σ)` containing:
 - `μ`: The predicted measurement mean.
 - `σ`: The predicted standard deviation (element-wise sqrt of innovation covariance diagonal).
 """
-function predict_kf!(
-    kf,
-    u,
-)  
+function predict_kf!(kf, u)
     predict!(kf, u)
     μ, S = measurement_kf(kf, kf.x, kf.R, u)
     σ = sqrt.(S)
-    (; μ = μ , σ = σ)
-end
-
-"""
-    predict_gp(kf, b, id::Symbol)
-    predict_gp(kf, bs::AbstractArray, x::AbstractArray, R::AbstractMatrix, id::Symbol)
-
-Project the Gaussian Process component of the EKF state to new input point(s).
-
-This wrapper extracts the state ``x`` and covariance ``R`` associated with the gp `id` and delegates to the core projection logic.
-
-# Arguments
-- `kf`: The Extended Kalman Filter.
-- `b` or `bs`: A scalar input or array of inputs to predict.
-- `id`: The symbol identifying the GP component in the state vector.
-
-# Returns
-A `NamedTuple` `(; μ, σ)` containing the predicted mean and standard deviation.
-"""
-function predict_gp(kf, b, id::Symbol)
-    x = state(kf, id)
-    R = covariance(kf, id)
-    predict_gp(kf,b,x,R,id)
-end
-
-
-function predict_gp(kf, bs::AbstractArray, x::AbstractArray, R::AbstractMatrix, id::Symbol)
-    results = predict_gp.(Ref(kf), bs, Ref(x), Ref(R), id)
-    μ = vcat([res.μ for res in results]...)
-    σ = vcat([res.σ for res in results]...)
-    return (; μ , σ )
+    return (; μ = μ, σ = σ)
 end
 
 """
@@ -206,9 +171,37 @@ function predict_gp(kf, b::Real, x::AbstractArray, R::AbstractMatrix, id::Symbol
     m = mean(gp, b)
     μ = H * (x´ - μ0) + m
 
-    R2 = gp.kernel(b,b) - H * cov(gp, b0, b) #eq.7 
+    R2 = gp.kernel(b, b) - H * cov(gp, b0, b) #eq.7
     Σ = R2 + H * R´ * H' #eq.9
     σ = sqrt(Σ)
-    (; μ = μ,σ =σ)
+    return (; μ = μ, σ = σ)
 end
 
+"""
+    predict_gp(kf, b, id::Symbol)
+    predict_gp(kf, bs::AbstractArray, x::AbstractArray, R::AbstractMatrix, id::Symbol)
+
+Project the Gaussian Process component of the EKF state to new input point(s).
+
+This wrapper extracts the state ``x`` and covariance ``R`` associated with the gp `id` and delegates to the core projection logic.
+
+# Arguments
+- `kf`: The Extended Kalman Filter.
+- `b` or `bs`: A scalar input or array of inputs to predict.
+- `id`: The symbol identifying the GP component in the state vector.
+
+# Returns
+A `NamedTuple` `(; μ, σ)` containing the predicted mean and standard deviation.
+"""
+function predict_gp(kf, b, id::Symbol)
+    x = state(kf, id)
+    R = covariance(kf, id)
+    return predict_gp(kf, b, x, R, id)
+end
+
+function predict_gp(kf, bs::AbstractArray, x::AbstractArray, R::AbstractMatrix, id::Symbol)
+    results = predict_gp.(Ref(kf), bs, Ref(x), Ref(R), id)
+    μ = vcat([res.μ for res in results]...)
+    σ = vcat([res.σ for res in results]...)
+    return (; μ, σ)
+end
