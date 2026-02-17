@@ -54,7 +54,7 @@ function RGP(gp::GP, b0::T) where {T <: AbstractArray}
     nb = length(b0) # 1-dim basis vector (for now)
 
     # pre-compute for the basis points: mean vector, covariance matrix
-    # and inverse covaraince matrix (adding a generic `1e-6` jitter for stability)
+    # and inverse covariance matrix (adding a generic `1e-6` jitter for stability)
     μ0 = mean(gp, b0) #|> T
     # μ0 = SVector{nb}(mean(gp, b0))
     Σ0 = cov(gp, b0) + 1.0e-6I
@@ -92,7 +92,7 @@ Calculate the conditional mean of the Gaussian Process at a new point `b`.
 See [1] for a detailed description on recursive GPs.
 
 ```math
-\\mu_{post} = m(b) + k(b, b_0) \\Sigma_0^{-1} (g - \\mu_0)``
+\\mu_{post} = m(b) + k(b, b_0) \\Sigma_0^{-1} (g - \\mu_0)
 ```
 
 [1] - M. F. Huber, "Recursive Gaussian process: On-line regression and learning,"

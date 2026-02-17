@@ -10,6 +10,8 @@ Constructs an `ExtendedKalmanFilter` from `LowLevelParticleFilters.jl` using a s
 - `R2`: A function returning the measurement noise covariance matrix.
 - `Ajac`, `Cjac`: Optional Jacobians for the dynamics and measurement models.
 - `p`: Additional parameters passed to the filter.
+- `ny`: Number of outputs (measurement dimension).
+- `nu`: Number of inputs (control dimension).
 
 # Returns
 - An `ExtendedKalmanFilter` initialized with a `ComponentVector` state and structured covariance matrices.
@@ -69,7 +71,7 @@ function LLPF.covariance(kf, id::Symbol)
 end
 
 """
-    measure_kf(kf, u, x=state(kf), R=covariance(kf), u, [p, t]; R2)
+    measure_kf(kf, u, x=state(kf), R=covariance(kf), p=kf.p, t=index(kf))
 
 Calculate the predicted measurement and innovation covariance.
 
@@ -78,11 +80,13 @@ Calculate the predicted measurement and innovation covariance.
 - `u`: The control input.
 - `x`: State estimate.
 - `R`: Covariance matrix.
+- `p`: Additional parameters passed to the filter.
+- `t`: Current time index.
 
 # Returns
-A named tuple `(;μ, S)` where:
+A named tuple `(;μ, Σ)` where:
 - `μ`: The expected measurement ``h(x^-, u, p, t)``.
-- `S`: The innovation covariance ``C \\Sigma^- C^T + R_2``.
+- `Σ`: The innovation covariance ``C \\Sigma^- C^T + R_2``.
 """
 function measure_kf(kf::LLPF.AbstractExtendedKalmanFilter, u, x = state(kf), R = covariance(kf), p = kf.p, t = index(kf))
     measurement_model = kf.measurement_model
@@ -95,7 +99,7 @@ function measure_kf(measurement_model::EKFMeasurementModel{IPM}, u, x, R, p, t) 
     R2 = LLPF.get_mat(measurement_model.R2, x, u, p, t)
 
     if IPM
-        μ = zeros(length(ny))
+        μ = zeros(ny)
         measurement(μ, x, u, p, t)
     else
         μ = measurement(x, u, p, t)
@@ -161,7 +165,7 @@ end
 
 Project the Gaussian Process component of the EKF state to new input point(s).
 
-This wrapper extracts the state ``x`` and covariance ``R`` associated with the gp `id` and delegates to the core projection logic.
+This wrapper extracts the full state ``x`` and covariance ``R`` from the filter and delegates to the core projection logic.
 
 # Arguments
 - `kf`: The Extended Kalman Filter.
@@ -172,14 +176,7 @@ This wrapper extracts the state ``x`` and covariance ``R`` associated with the g
 A `NamedTuple` `(; μ, σ)` containing the predicted mean and standard deviation.
 """
 function predict_gp(kf, b, id::Symbol)
-    x = state(kf, id)
-    R = covariance(kf, id)
+    x = state(kf)
+    R = covariance(kf)
     return predict_gp(kf, b, x, R, id)
-end
-
-function predict_gp(kf, bs::AbstractArray, x::AbstractArray, R::AbstractMatrix, id::Symbol)
-    results = predict_gp.(Ref(kf), bs, Ref(x), Ref(R), id)
-    μ = vcat([res.μ for res in results]...)
-    σ = vcat([res.σ for res in results]...)
-    return (; μ, σ)
 end

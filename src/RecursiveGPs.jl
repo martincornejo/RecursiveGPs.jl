@@ -1,7 +1,7 @@
 module RecursiveGPs
 
-export RGP, measure_gp, uncertainty_gp
-export make_ekf, predict_gp, predict_kf!
+export RGP, measurement_gp, uncertainty_gp
+export make_ekf, predict_gp, measure_kf
 using Statistics
 using LinearAlgebra
 using AbstractGPs
