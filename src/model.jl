@@ -69,65 +69,43 @@ function LLPF.covariance(kf, id::Symbol)
 end
 
 """
-    measurement_kf(kf, x⁻, Σ⁻, u, [p, t]; R2)
+    measure_kf(kf, u, x=state(kf), R=covariance(kf), u, [p, t]; R2)
 
 Calculate the predicted measurement and innovation covariance.
 
 # Arguments
 - `kf`: The Extended Kalman Filter.
-- `x⁻`: The *a priori* state estimate (before update).
-- `Σ⁻`: The *a priori* covariance matrix.
 - `u`: The control input.
+- `x`: State estimate.
+- `R`: Covariance matrix.
 
 # Returns
-A tuple `(μ, S)` where:
+A named tuple `(;μ, S)` where:
 - `μ`: The expected measurement ``h(x^-, u, p, t)``.
 - `S`: The innovation covariance ``C \\Sigma^- C^T + R_2``.
 """
-function measurement_kf(
-        kf::LLPF.AbstractKalmanFilter, x⁻, Σ⁻, u,
-        measurement_model::LLPF.EKFMeasurementModel{IPM} = kf.measurement_model,
-        p = LLPF.parameters(kf),
-        t::Real = index(kf);
-        R2 = LLPF.get_mat(kf.measurement_model.R2, x⁻, u, p, t)
-    ) where {IPM}
+function measure_kf(kf::LLPF.AbstractExtendedKalmanFilter, u, x = state(kf), R = covariance(kf), p = kf.p, t = index(kf))
+    measurement_model = kf.measurement_model
+    return measure_kf(measurement_model, u, x, R, p, t)
+end
 
-    (; measurement, Cjac) = measurement_model
-    ny = kf.kf.ny
-    C = Cjac(x⁻, u, p, t)
+function measure_kf(measurement_model::EKFMeasurementModel{IPM}, u, x, R, p, t) where {IPM}
+    (; measurement, Cjac, ny) = measurement_model
+    C = Cjac(x, u, p, t)
+    R2 = LLPF.get_mat(measurement_model.R2, x, u, p, t)
 
     if IPM
-        μ = zeros(ny)
-        measurement(μ, x⁻, u, p, t)
+        μ = zeros(length(ny))
+        measurement(μ, x, u, p, t)
     else
-        μ = measurement(x⁻, u, p, t)
+        μ = measurement(x, u, p, t)
     end
 
+    Σ = LLPF.symmetrize(C * R * C') + R2
 
-    S = LLPF.symmetrize(C * Σ⁻ * C') + R2
-    return (μ, S)
+    return (; μ, Σ)
 end
 
-"""
-    predict_kf!(kf, u)
-
-Perform the EKF prediction step and return measurement statistics.
-
-# Arguments
-- `kf`: The Extended Kalman Filter (will be mutated).
-- `u`: The control input.
-
-# Returns
-A `NamedTuple` `(; μ, σ)` containing:
-- `μ`: The predicted measurement mean.
-- `σ`: The predicted standard deviation (element-wise sqrt of innovation covariance diagonal).
-"""
-function predict_kf!(kf, u)
-    predict!(kf, u)
-    μ, S = measurement_kf(kf, kf.x, kf.R, u)
-    σ = sqrt.(S)
-    return (; μ = μ, σ = σ)
-end
 
 """
     predict_gp(kf, b::Real, x::AbstractArray, R::AbstractMatrix, id::Symbol)
