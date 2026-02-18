@@ -44,7 +44,7 @@ function make_ekf(components::NamedTuple, dynamics, measurement::Function, R2::F
         p...,
     )
 
-    return ExtendedKalmanFilter(dynamics, measurement, R1, R2, d0; Ajac, Cjac, nx, nu, ny, p) # , Ajac=fAjac, Cjac=fCjac)
+    return ExtendedKalmanFilter(dynamics, measurement, R1, R2, d0; Ajac, Cjac, nx, nu, ny, p)
 end
 
 """

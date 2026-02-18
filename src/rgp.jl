@@ -10,7 +10,8 @@ Statistics.cov(gp::GP, x::Real, y::AbstractVector) = gp.kernel.(x, y)'
 Statistics.cov(gp::GP, x::Real) = kernelmatrix(gp.kernel, x)
 
 function cov!(c::AbstractVector, gp::GP, x::AbstractVector, y::Real)
-    return @. c = gp.kernel(x, y)
+    @. c = gp.kernel(x, y)
+    return
 end
 
 function cov!(c::AbstractVector, gp::GP{<:Any, <:KernelSum}, x::AbstractVector, y)
@@ -23,13 +24,6 @@ end
 
 """
     struct RGP{bT, mT, BT, RT, cT}
-
-A "Recursive Gaussian Process" structure.
-Available constructors are:
-
-    RGP(gp::GP, b0::AbstractArray)
-    RGP(kernel::Kernel, b0::AbstractArray)
-    RGP(mean, kernel::Kernel, b0::AbstractArray)
 
 # Fields
 - `gp`: The underlying `AbstractGPs.GP` object.
@@ -50,14 +44,17 @@ struct RGP{bT, mT, BT, RT, cT}
     cache::cT
 end
 
-function RGP(gp::GP, b0::T) where {T <: AbstractArray}
+"""
+RGP(gp::GP, b0::AbstractArray)
+RGP(gp::GP, b0::AbstractArray, cov_jitter=1e-6)
+"""
+function RGP(gp::GP, b0::T, cov_jitter = 1.0e-6) where {T <: AbstractArray}
     nb = length(b0) # 1-dim basis vector (for now)
 
     # pre-compute for the basis points: mean vector, covariance matrix
     # and inverse covariance matrix (adding a generic `1e-6` jitter for stability)
-    μ0 = mean(gp, b0) #|> T
-    # μ0 = SVector{nb}(mean(gp, b0))
-    Σ0 = cov(gp, b0) + 1.0e-6I
+    μ0 = mean(gp, b0)
+    Σ0 = cov(gp, b0) + cov_jitter * I
     Σ0⁻¹ = inv(Σ0)
 
     R1 = zeros(nb, nb)
@@ -68,20 +65,28 @@ function RGP(gp::GP, b0::T) where {T <: AbstractArray}
         k = DiffCache(similar(b0), csize),
         k⁻ = DiffCache(similar(b0), csize),
         H = DiffCache(similar(b0'), csize),
-        Δg = DiffCache(similar(b0), csize), # <- use DiffCache #
+        Δg = DiffCache(similar(b0), csize),
     )
 
     return RGP(gp, b0, μ0, Σ0, Σ0⁻¹, R1, cache)
 end
 
-function RGP(kernel::Kernel, b0::AbstractArray)
+"""
+RGP(kernel::Kernel, b0::AbstractArray)
+RGP(kernel::Kernel, b0::AbstractArray, cov_jitter=1e-6)
+"""
+function RGP(kernel::Kernel, b0::AbstractArray, cov_jitter = 1.0e-6)
     gp = GP(kernel)
-    return RGP(gp, b0)
+    return RGP(gp, b0, cov_jitter)
 end
 
-function RGP(mean, kernel::Kernel, b0::AbstractArray)
+"""
+RGP(mean, kernel::Kernel, b0::AbstractArray)
+RGP(mean, kernel::Kernel, b0::AbstractArray, cov_jitter=1e-6)
+"""
+function RGP(mean, kernel::Kernel, b0::AbstractArray, cov_jitter = 1.0e-6)
     gp = GP(mean, kernel)
-    return RGP(gp, b0)
+    return RGP(gp, b0, cov_jitter)
 end
 
 
@@ -100,8 +105,6 @@ Pattern Recognition Letters, 2014, doi: 10.1016/j.patrec.2014.03.004
 """
 function measurement_gp(rgp::RGP, g::AbstractArray, b::Real)
     (; gp, b0, μ0, Σ0⁻¹, cache) = rgp
-    # (; k, H) = cache
-    # Δg = get_tmp(cache.Δg, g)
     T = eltype(Σ0⁻¹) <: ForwardDiff.Dual ? ForwardDiff.Dual : typeof(b)
     k = get_tmp(cache.k, T)
     H = get_tmp(cache.H, T)
