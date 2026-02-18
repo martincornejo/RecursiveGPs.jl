@@ -70,63 +70,23 @@ function LLPF.covariance(kf, id::Symbol)
     return cx[id, id]
 end
 
-"""
-    measure_kf(kf, u, x=state(kf), R=covariance(kf), p=kf.p, t=index(kf))
-
-Calculate the predicted measurement and innovation covariance.
-
-# Arguments
-- `kf`: The Extended Kalman Filter.
-- `u`: The control input.
-- `x`: State estimate.
-- `R`: Covariance matrix.
-- `p`: Additional parameters passed to the filter.
-- `t`: Current time index.
-
-# Returns
-A named tuple `(;μ, Σ)` where:
-- `μ`: The expected measurement ``h(x^-, u, p, t)``.
-- `Σ`: The innovation covariance ``C \\Sigma^- C^T + R_2``.
-"""
-function measure_kf(kf::LLPF.AbstractExtendedKalmanFilter, u, x = state(kf), R = covariance(kf), p = kf.p, t = index(kf))
-    measurement_model = kf.measurement_model
-    return measure_kf(measurement_model, u, x, R, p, t)
-end
-
-function measure_kf(measurement_model::EKFMeasurementModel{IPM}, u, x, R, p, t) where {IPM}
-    (; measurement, Cjac, ny) = measurement_model
-    C = Cjac(x, u, p, t)
-    R2 = LLPF.get_mat(measurement_model.R2, x, u, p, t)
-
-    if IPM
-        μ = zeros(ny)
-        measurement(μ, x, u, p, t)
-    else
-        μ = measurement(x, u, p, t)
-    end
-
-    Σ = LLPF.symmetrize(C * R * C') + R2
-
-    return (; μ, Σ)
-end
-
 
 """
     predict_gp(kf, b::Real, x::AbstractArray, R::AbstractMatrix, id::Symbol)
 
-Core implementation of the GP-EKF projection at a single point `b`
+GP-KF projection at a single point `b` for component `id`
 
 # Arguments
 - `kf`: The Extended Kalman Filter.
 - `b`: The scalar input point.
-- `x`: The current state vector slice for component `id`.
+- `x`: Full state vector.
 - `R`: The current covariance matrix slice for component `id`.
 - `id`: The component identifier symbol.
 
 # Returns
 A `NamedTuple` `(; μ, σ)` containing:
-- `μ`: The projected mean.
-- `σ`: The projected standard deviation.
+- `μ`: The projected mean of component `id`.
+- `σ`: The projected standard deviation of component `id`.
 
 # Mathematical Details
 The prediction accounts for both the GP's intrinsic uncertainty and the filter's state uncertainty:
@@ -162,7 +122,7 @@ end
 """
     predict_gp(kf, b, id::Symbol)
 
-Project the Gaussian Process component of the EKF state to a new input point.
+GP-KF projection at a single point `b` for component `id`.
 
 This wrapper extracts the full state ``x`` and covariance ``R`` from the filter and delegates to the core projection logic.
 

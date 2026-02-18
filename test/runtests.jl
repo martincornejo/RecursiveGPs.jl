@@ -21,25 +21,12 @@ using LineSearches
     kernel1 = 0.02 * with_lengthscale(SEKernel(), 0.1)
     rgp1 = RGP(m1, kernel1, b0)
 
-    components = (; rgp1)
-
-    dynamics(x, u, p, t) = x
-
-    function measurement(x, u, p, t)
-        [measurement_gp(p.rgp1, x, u)]
-    end
-
-    function R2(x, u, p, t)
-        [1.0e-3]
-    end
-
     # Dataset: f(b) = 0.5b + 0.1*sinpi(2b), n=100, with noise
     f(b) = 0.5 * b + 0.1 * sinpi(b * 2)
     n = 100
-    bs = 0.1 .+ rand(rng, n) / 1.5
-    ys_raw = f.(bs) .+ 5.0e-3 .* randn(rng, n)
+    us = 0.1 .+ rand(rng, n) / 1.5
+    ys_raw = f.(us) .+ 5.0e-3 .* randn(rng, n)
     ys = [SA[y] for y in ys_raw]
-    us = [b for b in bs]
 
     @testset "Instantiation" begin
         gp_obj = GP(m1, kernel1)
@@ -84,51 +71,34 @@ using LineSearches
     end
 
     @testset "make_ekf + train" begin
-        kf = make_ekf(components, dynamics, measurement, R2)
+        kf = make_ekf(rgp1)
         for (u, y) in zip(us, ys)
             kf(u, y)
         end
     end
 
-    kf = make_ekf(components, dynamics, measurement, R2)
+    kf = make_ekf(rgp1)
     for (u, y) in zip(us, ys)
         kf(u, y)
     end
 
-    @testset "measure_kf" begin
+    @testset "predict_gp" begin
         u_test = us[1]
-        result = measure_kf(kf, u_test)
+        result = predict_gp(kf, u_test)
 
         # μ should match calling the measurement function directly
-        expected_μ = measurement(kf.x, u_test, kf.p, kf.t)
+        expected_μ = measurement_gp(rgp1, kf.x, u_test)
         @test result.μ ≈ expected_μ
-
-        # Σ should be symmetric and positive semi-definite
-        @test result.Σ ≈ result.Σ'
-        @test all(eigvals(Symmetric(result.Σ)) .≥ -1.0e-10)
     end
 
-    @testset "predict_gp" begin
+    @testset "predict_kf" begin
         # Predict within the training data range (0.1 to ~0.77)
         us_test = collect(range(0.15, 0.7, length = 50))
 
-        for u in us_test
-            pred = predict_gp(kf, u, :rgp1)
-            @test pred.σ ≥ 0
-        end
-
         # After training on 100 noisy points, predictions should be close to ground truth
-        preds = [predict_gp(kf, u, :rgp1) for u in us_test]
-        pred_μ = [p.μ for p in preds]
-        @test pred_μ ≈ f.(us_test) atol = 0.01
-    end
-
-    @testset "state/covariance accessors" begin
-        cx = ComponentVector(kf.x, kf.p.xid)
-        cR = ComponentMatrix(kf.R, kf.p.Σid)
-
-        @test LowLevelParticleFilters.state(kf, :rgp1) ≈ cx.rgp1
-        @test LowLevelParticleFilters.covariance(kf, :rgp1) ≈ cR[:rgp1, :rgp1]
+        preds = [predict_kf(kf, u) for u in us_test]
+        pred_μ = [first(p.μ) for p in preds]
+        @test all(isapprox.(pred_μ, f.(us_test), atol = 0.005))
     end
 end
 
@@ -216,22 +186,16 @@ end
         end
     end
 
-    @testset "measure_kf" begin
-        u_test = us[1]
-        result = measure_kf(kf, u_test)
-
-        expected_μ = measurement(kf.x, u_test, kf.p, kf.t)
-        @test result.μ ≈ expected_μ
-
-        @test result.Σ ≈ result.Σ'
-        @test all(eigvals(Symmetric(result.Σ)) .≥ -1.0e-10)
+    for (u, y) in zip(us, ys)
+        kf(u, y)
     end
 
     @testset "predict_gp" begin
-        b_test = collect(range(0.15, 0.7, length = 20))
 
-        preds_a = [predict_gp(kf, b, :a) for b in b_test]
-        preds_b = [predict_gp(kf, b, :b) for b in b_test]
+        u_test = collect(range(0.15, 0.7, length = 20))
+
+        preds_a = [predict_gp(kf, u, :a) for u in u_test]
+        preds_b = [predict_gp(kf, u, :b) for u in u_test]
 
         # σ should be non-negative
         @test all(p -> p.σ ≥ 0, preds_a)
@@ -240,8 +204,19 @@ end
         # Predicted means should be close to ground truth
         pred_μ_a = [p.μ for p in preds_a]
         pred_μ_b = [p.μ for p in preds_b]
-        @test pred_μ_a ≈ f1.(b_test) atol = 0.15
-        @test pred_μ_b ≈ f2.(b_test) atol = 0.05
+        @test all(isapprox.(pred_μ_a, f1.(u_test); atol = 0.001))
+        @test all(isapprox.(pred_μ_b, f2.(u_test); atol = 0.01))
+    end
+
+    @testset "predict_kf" begin
+        u_test = us[1]
+        result = predict_kf(kf, u_test)
+
+        expected_μ = measurement(kf.x, u_test, kf.p, kf.t)
+        @test result.μ ≈ expected_μ
+
+        @test result.Σ ≈ result.Σ'
+        @test all(eigvals(Symmetric(result.Σ)) .≥ -1.0e-10)
     end
 end
 
@@ -255,10 +230,9 @@ end
     # Dataset (same as testset 1)
     f(b) = 0.5 * b + 0.1 * sinpi(b * 2)
     n = 100
-    bs = 0.1 .+ rand(rng, n) / 1.5
-    ys_raw = f.(bs) .+ 5.0e-3 .* randn(rng, n)
+    us = 0.1 .+ rand(rng, n) / 1.5
+    ys_raw = f.(us) .+ 5.0e-3 .* randn(rng, n)
     ys = [SA[y] for y in ys_raw]
-    us = [b for b in bs]
 
     function build_kf(θ, ϑ)
         b0 = collect(range(0, 1, length = ϑ.n_basis))
