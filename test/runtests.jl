@@ -11,18 +11,17 @@ using OptimizationOptimJL
 using LineSearches
 
 
-
 @testset "RGP" begin
     rng = MersenneTwister(123)
-    
+
     N_basis = 5
-    b0 = sort(rand(rng, N_basis))  
-    g_obs = rand(rng, N_basis)      
-    b_query = 0.5                   
-    
-    k = SEKernel() 
-    m = ZeroMean() 
-    
+    b0 = range(0, 1, N_basis)
+    g_obs = rand(rng, N_basis)
+    b_query = 0.5
+
+    k = SEKernel()
+    m = ZeroMean()
+
     gp_obj = GP(m, k)
 
     @testset "Instantiation" begin
@@ -30,17 +29,17 @@ using LineSearches
         RGP(k, b0)
         RGP(m, k, b0)
     end
-    
+
     rgp_A = RGP(gp_obj, b0)
     rgp_B = RGP(k, b0)
     rgp_C = RGP(m, k, b0)
-    
+
     @testset "Internal State Consistency" begin
-        @test rgp_A.μ0 ≈ rgp_B.μ0
-        @test rgp_A.μ0 ≈ rgp_C.μ0
-        
-        @test rgp_A.Σ0⁻¹ ≈ rgp_B.Σ0⁻¹
-        @test rgp_A.Σ0⁻¹ ≈ rgp_C.Σ0⁻¹
+        @test rgp_A.μ0 == rgp_B.μ0
+        @test rgp_A.μ0 == rgp_C.μ0
+
+        @test rgp_A.Σ0⁻¹ == rgp_B.Σ0⁻¹
+        @test rgp_A.Σ0⁻¹ == rgp_C.Σ0⁻¹
     end
 
     @testset "Output Consistency: measurement_gp" begin
@@ -48,9 +47,9 @@ using LineSearches
         val_B = measurement_gp(rgp_B, g_obs, b_query)
         val_C = measurement_gp(rgp_C, g_obs, b_query)
 
-        @test val_A ≈ val_B
-        @test val_A ≈ val_C
-        
+        @test val_A == val_B
+        @test val_A == val_C
+
     end
 
     @testset "Output Consistency: uncertainty_gp" begin
@@ -58,9 +57,30 @@ using LineSearches
         unc_B = uncertainty_gp(rgp_B, b_query)
         unc_C = uncertainty_gp(rgp_C, b_query)
 
-        @test unc_A ≈ unc_B
-        @test unc_A ≈ unc_C
-        
+        @test unc_A == unc_B
+        @test unc_A == unc_C
+        @test unc_A ≥ 0
+    end
+
+    @testset "Correctness: measurement_gp" begin
+        # Manual computation: m(b) + k(b, b0) * Σ0⁻¹ * (g - μ0)
+        kb_b0 = rgp_A.gp.kernel.(Ref(b_query), b0)  # [k(b, b0_1), ..., k(b, b0_N)]
+        H = kb_b0' * rgp_A.Σ0⁻¹
+        expected = H * (g_obs - rgp_A.μ0)
+
+        val = measurement_gp(rgp_A, g_obs, b_query)
+        @test val[1] ≈ expected[1]
+    end
+
+    @testset "Correctness: uncertainty_gp" begin
+        # Manual computation: k(b, b) - k(b, b0) * Σ0⁻¹ * k(b0, b)
+        kb_b0 = rgp_A.gp.kernel.(Ref(b_query), b0)
+        kb_b = rgp_A.gp.kernel(b_query, b_query)
+        expected = kb_b - kb_b0' * rgp_A.Σ0⁻¹ * kb_b0
+
+        unc = uncertainty_gp(rgp_A, b_query)
+        @test unc ≈ expected atol = 1.0e-4
+        @test unc ≥ 0
     end
 end
 
@@ -69,31 +89,31 @@ end
 
     ## SET-UP
     rng = MersenneTwister(123)
-    
+
     N_basis = 5
-    b0 = sort(rand(rng, N_basis))  
-    g_obs = rand(rng, N_basis)      
-    b_query = 0.5                   
-    
+    b0 = sort(rand(rng, N_basis))
+    g_obs = rand(rng, N_basis)
+    b_query = 0.5
+
     gp_obj = GP(ZeroMean(), SqExponentialKernel())
     rgp_obj = RGP(gp_obj, b0)
-    
+
     dim_A = 3
     A = randn(rng, dim_A, dim_A)
-    comp_A = (; μ0 = rand(rng, dim_A), Σ0 = A* A' + 1e-6*I, R1 = fill(1e-3,dim_A,dim_A))
+    comp_A = (; μ0 = rand(rng, dim_A), Σ0 = A * A' + 1.0e-6 * I, R1 = fill(1.0e-3, dim_A, dim_A))
     components = (; rgp_obj, comp_A)
 
-    function dynamics(x,u,p,t)
+    function dynamics(x, u, p, t)
         x
     end
 
-    function measurement(x,u,p,t)
+    function measurement(x, u, p, t)
         cx = ComponentVector(x, p.xid)
         [measurement_gp(p.rgp_obj, cx.rgp_obj, u) .+ sum(cx.comp_A)]
     end
 
-    function R2(x,u,p,t)
-        [1e-3]
+    function R2(x, u, p, t)
+        [1.0e-3]
     end
 
     ## Testing all possible Instantiation methods
@@ -110,9 +130,9 @@ end
         @testset "Promotion: μ0 dual" begin
             μ0_dual = ForwardDiff.Dual.(comp_A.μ0, 1.0)
 
-            comp_A_dual = (; μ0 = μ0_dual, Σ0 = A* A' + 1e-6*I, R1 = fill(1e-3,dim_A,dim_A))
+            comp_A_dual = (; μ0 = μ0_dual, Σ0 = A * A' + 1.0e-6 * I, R1 = fill(1.0e-3, dim_A, dim_A))
             components_dual = (; rgp_obj, comp_A_dual)
-            
+
             @test_nowarn make_ekf(components_dual, dynamics, measurement, R2)
             kf = make_ekf(components_dual, dynamics, measurement, R2)
 
@@ -124,12 +144,12 @@ end
         @testset "Promotion: Σ0 is Dual" begin
             Σ0_dual = ForwardDiff.Dual.(comp_A.Σ0, 1.0)
 
-            comp_A_dual = (; μ0 = rand(rng, dim_A), Σ0 = Σ0_dual, R1 = fill(1e-3,dim_A,dim_A))
+            comp_A_dual = (; μ0 = rand(rng, dim_A), Σ0 = Σ0_dual, R1 = fill(1.0e-3, dim_A, dim_A))
             components_dual = (; rgp_obj, comp_A_dual)
 
             @test_nowarn make_ekf(components_dual, dynamics, measurement, R2)
             kf = make_ekf(components_dual, dynamics, measurement, R2)
-            
+
             @test eltype(kf.d0.μ) <: ForwardDiff.Dual
             @test eltype(kf.d0.Σ) <: ForwardDiff.Dual
             @test eltype(kf.R1) <: ForwardDiff.Dual
@@ -139,11 +159,11 @@ end
 
             R1_dual = ForwardDiff.Dual.(comp_A.R1, 1.0)
 
-            comp_A_dual = (; μ0 = rand(rng, dim_A), Σ0 = A*A' + 1e-6*I, R1 = R1_dual)
+            comp_A_dual = (; μ0 = rand(rng, dim_A), Σ0 = A * A' + 1.0e-6 * I, R1 = R1_dual)
             components_dual = (; rgp_obj, comp_A_dual)
 
             @test_nowarn make_ekf(components_dual, dynamics, measurement, R2)
-            
+
             kf = make_ekf(components_dual, dynamics, measurement, R2)
             @test eltype(kf.d0.μ) <: ForwardDiff.Dual
             @test eltype(kf.d0.Σ) <: ForwardDiff.Dual
@@ -163,12 +183,23 @@ end
 
         @test cx.rgp_obj ≈ rgp_obj.μ0
         @test cx.comp_A ≈ comp_A.μ0
-        
+
         @test cR[:rgp_obj, :rgp_obj] ≈ rgp_obj.Σ0
         @test cR[:comp_A, :comp_A] ≈ comp_A.Σ0
 
         @test cR1[:rgp_obj, :rgp_obj] ≈ rgp_obj.R1
         @test cR1[:comp_A, :comp_A] ≈ comp_A.R1
+    end
+
+    @testset "state and covariance accessors" begin
+        cx = ComponentVector(kf.x, xid)
+        cR = ComponentMatrix(kf.R, Σid)
+
+        @test LowLevelParticleFilters.state(kf, :rgp_obj) ≈ cx.rgp_obj
+        @test LowLevelParticleFilters.state(kf, :comp_A) ≈ cx.comp_A
+
+        @test LowLevelParticleFilters.covariance(kf, :rgp_obj) ≈ cR[:rgp_obj, :rgp_obj]
+        @test LowLevelParticleFilters.covariance(kf, :comp_A) ≈ cR[:comp_A, :comp_A]
     end
 
     ## Training data
@@ -179,89 +210,102 @@ end
     ## Train test
     @testset "Train" begin
         for (u, y) in zip(us_test, ys_test)
-            kf(u,[y])
+            kf(u, [y])
         end
     end
-    
+
     ## Post training state
     cx = ComponentVector(kf.x, xid)
     cR = ComponentMatrix(kf.R, Σid)
 
-    ## Testint predict_gp functionalities
-    @testset "predict_gp: Array Input" begin
-        @testset "Array input" begin
-            b_ar = [2.0]
-            
-            m1_ar = predict_gp(kf, b_ar, :rgp_obj)
-            m2_ar = predict_gp(kf, b_ar, cx.rgp_obj, cR[:rgp_obj, :rgp_obj], :rgp_obj)
+    @testset "measure_kf" begin
+        u_test = us_test[1]
+        result = measure_kf(kf, u_test)
 
-            @test size(m1_ar.μ) == size(b_ar)
-            @test m1_ar.μ ≈ m2_ar.μ
-            @test m1_ar.σ ≈ m2_ar.σ
-        end
+        # μ should match calling the measurement function directly
+        expected_μ = measurement(kf.x, u_test, kf.p, kf.t)
+        @test result.μ ≈ expected_μ
+
+        # Σ should be symmetric and positive semi-definite
+        @test result.Σ ≈ result.Σ'
+        @test all(eigvals(Symmetric(result.Σ)) .≥ -1e-10)
+    end
+
+    ## Testing predict_gp functionalities
+    @testset "predict_gp: Array Input" begin
+        # @testset "Array input" begin
+        #     b_ar = [2.0]
+
+        #     m1_ar = predict_gp(kf, b_ar, :rgp_obj)
+        #     m2_ar = predict_gp(kf, b_ar, cx.rgp_obj, cR[:rgp_obj, :rgp_obj], :rgp_obj)
+
+        #     @test size(m1_ar.μ) == size(b_ar)
+        #     @test m1_ar.μ ≈ m2_ar.μ
+        #     @test m1_ar.σ ≈ m2_ar.σ
+        # end
 
         @testset "Scalar Input" begin
             b_fl = 2.0
             m1_fl = predict_gp(kf, b_fl, :rgp_obj)
             m2_fl = predict_gp(kf, b_fl, cx.rgp_obj, cR[:rgp_obj, :rgp_obj], :rgp_obj)
-            
+
             @test m1_fl.μ ≈ m2_fl.μ
             @test m1_fl.σ ≈ m2_fl.σ
         end
     end
 
-    ## Testing if parameter Hypertuning works. 
+    ## Testing if parameter Hypertuning works.
     ## Hyp GP params, cmp_A cov matrix and R2
-    @testset "Hyp Tunning" begin
+    @testset "Hyperparameter Tuning" begin
 
         function build_kf(θ, ϑ)
             N_basis = 5
-            b0 = sort(rand(rng, N_basis))  
-              
-            
+            b0 = sort(rand(rng, N_basis))
+
+
             gp_obj = GP(ZeroMean(), θ.rgp.σ * with_lengthscale(SEKernel(), θ.rgp.ℓ))
             rgp_obj = RGP(gp_obj, b0)
-            
-            comp_A = (; μ0 = rand(rng, dim_A), Σ0 = θ.A.Σ0, R1 = fill(1e-3,dim_A,dim_A))
+
+            comp_A = (; μ0 = rand(rng, dim_A), Σ0 = θ.A.Σ0, R1 = fill(1.0e-3, dim_A, dim_A))
             components = (; rgp_obj, comp_A)
 
-            function R2(x,u,p,t)
+            function R2(x, u, p, t)
                 [θ.R2]
             end
 
             make_ekf(components, dynamics, measurement, R2)
         end
 
-        function loss_function(θ,p)
+        function loss_function(θ, p)
             """Squared error"""
-            (;ϑ, us, ys) = p
+            (; ϑ, us, ys) = p
             kf = build_kf(θ, ϑ)
 
             cost = 0.0
-            for (u, y) in zip(us,ys)
+            for (u, y) in zip(us, ys)
                 ll, e = correct!(kf, u, [y], kf.p)
                 predict!(kf, u)
-                cost += dot(e,1,e)
+                cost += dot(e, 1, e)
             end
             cost
         end
         θ0 = ComponentVector(;
             rgp = (;
                 σ = 0.8,
-                ℓ = 0.8
-            ), 
-            A = (; Σ0 = randn(rng, dim_A, dim_A) ),
-            R2 = 1e-1
+                ℓ = 0.8,
+            ),
+            A = (; Σ0 = randn(rng, dim_A, dim_A)),
+            R2 = 1.0e-1
         )
         ϑ = (;)
-        p = (;ϑ, us = us_test, ys = ys_test)
+        p = (; ϑ, us = us_test, ys = ys_test)
         adtype = AutoForwardDiff()
         f = OptimizationFunction(loss_function, adtype)
         prob = OptimizationProblem(f, θ0, p)
-        
-        alg = LBFGS(linesearch=LineSearches.BackTracking())
-        @test_nowarn sol = solve(prob, alg, reltol=1e-4, show_trace = false, maxiters = 1)   
+
+        alg = LBFGS(linesearch = LineSearches.BackTracking())
+        initial_cost = loss_function(θ0, p)
+        sol = solve(prob, alg, reltol = 1.0e-4, show_trace = false, maxiters = 10)
+        @test sol.objective < initial_cost
     end
 end
-
-

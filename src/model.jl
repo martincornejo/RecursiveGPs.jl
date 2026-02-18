@@ -161,15 +161,14 @@ end
 
 """
     predict_gp(kf, b, id::Symbol)
-    predict_gp(kf, bs::AbstractArray, x::AbstractArray, R::AbstractMatrix, id::Symbol)
 
-Project the Gaussian Process component of the EKF state to new input point(s).
+Project the Gaussian Process component of the EKF state to a new input point.
 
 This wrapper extracts the full state ``x`` and covariance ``R`` from the filter and delegates to the core projection logic.
 
 # Arguments
 - `kf`: The Extended Kalman Filter.
-- `b` or `bs`: A scalar input or array of inputs to predict.
+- `b`: A scalar input to predict.
 - `id`: The symbol identifying the GP component in the state vector.
 
 # Returns
