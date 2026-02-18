@@ -7,10 +7,12 @@ function make_ekf(rgp::RGP; ny::Int = 1, nu::Int = 1, p::NamedTuple = (;))
 
     R2(x, u, p, t) = uncertainty_gp(p.rgp, u) |> SMatrix{ny, ny}
 
-    R1 = rgp.R1 # SA?
+    T = promote_type(eltype(rgp.μ0), eltype(rgp.Σ0), eltype(rgp.R1))
+    μ0 = T.(rgp.μ0)
+    R1 = T.(rgp.R1)
 
-    d0 = LLPF.SimpleMvNormal(rgp.μ0, rgp.Σ0)
-    nx = length(rgp.μ0)
+    d0 = LLPF.SimpleMvNormal(μ0, rgp.Σ0)
+    nx = length(μ0)
 
     p = (; rgp, p...)
 

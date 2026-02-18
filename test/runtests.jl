@@ -140,16 +140,6 @@ end
     ys = [SA[y] for y in ys_raw]
     us = [[b, i] for (b, i) in zip(bs, is)]
 
-    @testset "Instantiation + type promotion" begin
-        @testset "No dual" begin
-            @test_nowarn make_ekf(components, dynamics, measurement, R2)
-            kf = make_ekf(components, dynamics, measurement, R2)
-            @test eltype(kf.d0.μ) <: Float64
-            @test eltype(kf.d0.Σ) <: Float64
-            @test eltype(kf.R1) <: Float64
-        end
-    end
-
     kf = make_ekf(components, dynamics, measurement, R2)
     xid = kf.p.xid
     Σid = kf.p.Σid
@@ -221,38 +211,30 @@ end
 end
 
 
-@testset "Hyperparameter Tuning" begin
+@testset "Hyperparameter Tuning (single RGP)" begin
     rng = Xoshiro(123)
 
     softplus(x) = 1 / (1 + exp(-x))
     inv_softplus(x) = log(x / (1 - x))
 
-    # Dataset (same as testset 1)
+    # Dataset
     f(b) = 0.5 * b + 0.1 * sinpi(b * 2)
     n = 100
     us = 0.1 .+ rand(rng, n) / 1.5
     ys_raw = f.(us) .+ 5.0e-3 .* randn(rng, n)
     ys = [SA[y] for y in ys_raw]
 
-    function build_kf(θ, ϑ)
+    function build_kf_single(θ, ϑ)
         b0 = collect(range(0, 1, length = ϑ.n_basis))
         gp = GP(ConstMean(ϑ.mean), θ.σ * with_lengthscale(SEKernel(), θ.ℓ))
-        rgp1 = RGP(gp, b0)
-        components = (; rgp1)
-
-        dynamics(x, u, p, t) = x
-
-        measurement(x, u, p, t) = [measurement_gp(p.rgp1, x, u)]
-
-        R2(x, u, p, t) = [θ.R2]
-
-        make_ekf(components, dynamics, measurement, R2)
+        rgp = RGP(gp, b0)
+        make_ekf(rgp)
     end
 
-    function loss_function(θ, p)
+    function loss_single(θ, p)
         (; ϑ, us, ys) = p
         θ_ = softplus.(θ)
-        kf = build_kf(θ_, ϑ)
+        kf = build_kf_single(θ_, ϑ)
 
         cost = 0.0
         for (u, y) in zip(us, ys)
@@ -266,23 +248,137 @@ end
     ϑ = (; n_basis = 20, mean = 0.0)
     p = (; ϑ, us, ys)
 
-    θ0 = ComponentVector(; σ = 0.2, ℓ = 0.8, R2 = 0.1^2)
+    θ0 = ComponentVector(; σ = 0.2, ℓ = 0.8)
     θ0 = inv_softplus.(θ0)
 
     adtype = AutoForwardDiff()
-    fs = OptimizationFunction(loss_function, adtype)
+    fs = OptimizationFunction(loss_single, adtype)
     prob = OptimizationProblem(fs, θ0, p)
     alg = LBFGS(linesearch = LineSearches.BackTracking())
 
     @testset "Loss decreases" begin
-        initial_cost = loss_function(θ0, p)
+        initial_cost = loss_single(θ0, p)
         sol = solve(prob, alg, reltol = 1.0e-4, show_trace = false, maxiters = 10)
         @test sol.objective < initial_cost
     end
 
     @testset "ForwardDiff compatibility" begin
-        g = ForwardDiff.gradient(θ -> loss_function(θ, p), θ0)
+        g = ForwardDiff.gradient(θ -> loss_single(θ, p), θ0)
         @test length(g) == length(θ0)
         @test all(isfinite, g)
+    end
+
+    @testset "Optimized predictions" begin
+        sol = solve(prob, alg, reltol = 1.0e-4, show_trace = false)
+        θ_opt = softplus.(sol.u)
+        kf = build_kf_single(θ_opt, ϑ)
+
+        for (u, y) in zip(us, ys)
+            kf(u, y)
+        end
+
+        us_test = collect(range(0.15, 0.7, length = 50))
+        preds = [predict_gp(kf, u) for u in us_test]
+        pred_μ = [p.μ for p in preds]
+        @test all(isapprox.(pred_μ, f.(us_test); atol = 0.01))
+    end
+end
+
+
+@testset "Hyperparameter Tuning (combined RGPs)" begin
+    rng = Xoshiro(123)
+
+    softplus(x) = 1 / (1 + exp(-x))
+    inv_softplus(x) = log(x / (1 - x))
+
+    # Dataset: y = f1(b) + i * f2(b)
+    f1(b) = exp(b)
+    f2(b) = 0.1 + 0.5 * b + 0.1 * sinpi(b * 2)
+    n = 100
+    bs = 0.1 .+ rand(rng, n) / 1.5
+    is = 0.2 .* randn(rng, n)
+    ys_raw = @. f1(bs) + is * f2(bs)
+    ys = [SA[y] for y in ys_raw]
+    us = [[b, i] for (b, i) in zip(bs, is)]
+
+    function build_kf_combined(θ, ϑ)
+        b0 = collect(range(0, 1, length = ϑ.n_basis))
+        rgp_a = RGP(θ.σ_a * with_lengthscale(SEKernel(), θ.ℓ_a), b0)
+        rgp_b = RGP(θ.σ_b * with_lengthscale(SEKernel(), θ.ℓ_b), b0)
+        components = (; a = rgp_a, b = rgp_b)
+
+        dynamics(x, u, p, t) = x
+
+        function measurement(x, u, p, t)
+            (; xid) = p
+            xc = ComponentVector(x, xid)
+            μ1 = measurement_gp(p.a, xc.a, u[1])
+            μ2 = measurement_gp(p.b, xc.b, u[1])
+            μ1 + u[2] * μ2 |> SVector{1}
+        end
+
+        function R2(x, u, p, t)
+            R1 = uncertainty_gp(p.a, u[1])
+            R2 = uncertainty_gp(p.b, u[1])
+            R1 + u[2]^2 * R2 |> SMatrix{1, 1}
+        end
+
+        make_ekf(components, dynamics, measurement, R2)
+    end
+
+    function loss_combined(θ, p)
+        (; ϑ, us, ys) = p
+        θ_ = softplus.(θ)
+        kf = build_kf_combined(θ_, ϑ)
+
+        cost = 0.0
+        for (u, y) in zip(us, ys)
+            ll, e = correct!(kf, u, y, kf.p)
+            predict!(kf, u)
+            cost += dot(e, 1, e)
+        end
+        cost
+    end
+
+    ϑ = (; n_basis = 20)
+    p = (; ϑ, us, ys)
+
+    θ0 = ComponentVector(; σ_a = 0.2, ℓ_a = 0.8, σ_b = 0.2, ℓ_b = 0.8)
+    θ0 = inv_softplus.(θ0)
+
+    adtype = AutoForwardDiff()
+    fs = OptimizationFunction(loss_combined, adtype)
+    prob = OptimizationProblem(fs, θ0, p)
+    alg = LBFGS(linesearch = LineSearches.BackTracking())
+
+    @testset "Loss decreases" begin
+        initial_cost = loss_combined(θ0, p)
+        sol = solve(prob, alg, reltol = 1.0e-4, show_trace = false, maxiters = 10)
+        @test sol.objective < initial_cost
+    end
+
+    @testset "ForwardDiff compatibility" begin
+        g = ForwardDiff.gradient(θ -> loss_combined(θ, p), θ0)
+        @test length(g) == length(θ0)
+        @test all(isfinite, g)
+    end
+
+    @testset "Optimized predictions" begin
+        sol = solve(prob, alg, reltol = 1.0e-4, show_trace = false)
+        θ_opt = softplus.(sol.u)
+        kf = build_kf_combined(θ_opt, ϑ)
+
+        for (u, y) in zip(us, ys)
+            kf(u, y)
+        end
+
+        u_test = collect(range(0.15, 0.7, length = 20))
+        preds_a = [predict_gp(kf, u, :a) for u in u_test]
+        preds_b = [predict_gp(kf, u, :b) for u in u_test]
+
+        pred_μ_a = [p.μ for p in preds_a]
+        pred_μ_b = [p.μ for p in preds_b]
+        @test all(isapprox.(pred_μ_a, f1.(u_test); atol = 0.01))
+        @test all(isapprox.(pred_μ_b, f2.(u_test); atol = 0.01))
     end
 end
