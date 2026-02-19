@@ -72,21 +72,21 @@ end
 
 
 """
-    predict_gp(kf, b::Real, x::AbstractArray, R::AbstractMatrix, id::Symbol)
+    predict_gp(kf, b::AbstractVector, x::AbstractArray, R::AbstractMatrix, id::Symbol)
 
-GP-KF projection at a single point `b` for component `id`
+GP-KF projection at a vector of query points `b` for component `id`.
 
 # Arguments
 - `kf`: The Extended Kalman Filter.
-- `b`: The scalar input point.
+- `b`: Vector of input query points.
 - `x`: Full state vector.
-- `R`: The current covariance matrix slice for component `id`.
+- `R`: The current covariance matrix.
 - `id`: The component identifier symbol.
 
 # Returns
-A `NamedTuple` `(; μ, σ)` containing:
-- `μ`: The projected mean of component `id`.
-- `σ`: The projected standard deviation of component `id`.
+A `NamedTuple` `(; μ, Σ)` containing:
+- `μ`: The projected mean vector of component `id`.
+- `Σ`: The projected covariance matrix of component `id`.
 
 # Mathematical Details
 The prediction accounts for both the GP's intrinsic uncertainty and the filter's state uncertainty:
@@ -99,7 +99,7 @@ Where ``R_2`` is the GP conditional variance.
 # References
  - M. F. Huber, "Recursive Gaussian process regression," 2013 IEEE International Conference on Acoustics, Speech and Signal Processing, Vancouver, BC, Canada, 2013, pp. 3362-3366, doi: 10.1109/ICASSP.2013.6638281.
 """
-function predict_gp(kf, b::Real, x::AbstractArray, R::AbstractMatrix, id::Symbol)
+function predict_gp(kf, b::AbstractVector, x::AbstractArray, R::AbstractMatrix, id::Symbol)
     (; xid, Σid) = kf.p
     (; gp, b0, μ0, Σ0⁻¹) = kf.p[id]
 
@@ -113,26 +113,25 @@ function predict_gp(kf, b::Real, x::AbstractArray, R::AbstractMatrix, id::Symbol
     m = mean(gp, b)
     μ = H * (x´ - μ0) + m
 
-    R2 = gp.kernel(b, b) - H * cov(gp, b0, b) #eq.7
+    R2 = cov(gp, b) - H * cov(gp, b0, b) #eq.7
     Σ = R2 + H * R´ * H' #eq.9
-    σ = sqrt(Σ)
-    return (; μ = μ, σ = σ)
+    return (; μ, Σ)
 end
 
 """
-    predict_gp(kf, b, id::Symbol)
+    predict_gp(kf, b::AbstractVector, id::Symbol)
 
-GP-KF projection at a single point `b` for component `id`.
+GP-KF projection at a vector of query points `b` for component `id`.
 
 This wrapper extracts the full state ``x`` and covariance ``R`` from the filter and delegates to the core projection logic.
 
 # Arguments
 - `kf`: The Extended Kalman Filter.
-- `b`: A scalar input to predict.
+- `b`: Vector of input query points.
 - `id`: The symbol identifying the GP component in the state vector.
 
 # Returns
-A `NamedTuple` `(; μ, σ)` containing the predicted mean and standard deviation.
+A `NamedTuple` `(; μ, Σ)` containing the predicted mean vector and covariance matrix.
 """
 function predict_gp(kf, b, id::Symbol)
     x = state(kf)

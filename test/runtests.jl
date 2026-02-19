@@ -83,12 +83,15 @@ using LineSearches
     end
 
     @testset "predict_gp" begin
-        u_test = us[1]
+        u_test = [us[1]]
         result = predict_gp(kf, u_test)
 
         # μ should match calling the measurement function directly
-        expected_μ = measurement_gp(rgp1, kf.x, u_test)
-        @test result.μ ≈ expected_μ
+        expected_μ = measurement_gp(rgp1, kf.x, us[1])
+        @test result.μ ≈ [expected_μ]
+
+        # Σ should be positive semidefinite
+        @test result.Σ[1, 1] ≥ 0
     end
 
     @testset "predict_kf" begin
@@ -184,18 +187,16 @@ end
 
         u_test = collect(range(0.15, 0.7, length = 20))
 
-        preds_a = [predict_gp(kf, u, :a) for u in u_test]
-        preds_b = [predict_gp(kf, u, :b) for u in u_test]
+        pred_a = predict_gp(kf, u_test, :a)
+        pred_b = predict_gp(kf, u_test, :b)
 
-        # σ should be non-negative
-        @test all(p -> p.σ ≥ 0, preds_a)
-        @test all(p -> p.σ ≥ 0, preds_b)
+        # Σ diagonal should be non-negative (positive semidefinite)
+        @test all(diag(pred_a.Σ) .≥ 0)
+        @test all(diag(pred_b.Σ) .≥ 0)
 
         # Predicted means should be close to ground truth
-        pred_μ_a = [p.μ for p in preds_a]
-        pred_μ_b = [p.μ for p in preds_b]
-        @test all(isapprox.(pred_μ_a, f1.(u_test); atol = 0.001))
-        @test all(isapprox.(pred_μ_b, f2.(u_test); atol = 0.01))
+        @test all(isapprox.(pred_a.μ, f1.(u_test); atol = 0.001))
+        @test all(isapprox.(pred_b.μ, f2.(u_test); atol = 0.01))
     end
 
     @testset "predict_kf" begin
@@ -278,9 +279,8 @@ end
         end
 
         us_test = collect(range(0.15, 0.7, length = 50))
-        preds = [predict_gp(kf, u) for u in us_test]
-        pred_μ = [p.μ for p in preds]
-        @test all(isapprox.(pred_μ, f.(us_test); atol = 0.01))
+        pred = predict_gp(kf, us_test)
+        @test all(isapprox.(pred.μ, f.(us_test); atol = 0.01))
     end
 end
 
@@ -373,12 +373,10 @@ end
         end
 
         u_test = collect(range(0.15, 0.7, length = 20))
-        preds_a = [predict_gp(kf, u, :a) for u in u_test]
-        preds_b = [predict_gp(kf, u, :b) for u in u_test]
+        pred_a = predict_gp(kf, u_test, :a)
+        pred_b = predict_gp(kf, u_test, :b)
 
-        pred_μ_a = [p.μ for p in preds_a]
-        pred_μ_b = [p.μ for p in preds_b]
-        @test all(isapprox.(pred_μ_a, f1.(u_test); atol = 0.01))
-        @test all(isapprox.(pred_μ_b, f2.(u_test); atol = 0.01))
+        @test all(isapprox.(pred_a.μ, f1.(u_test); atol = 0.01))
+        @test all(isapprox.(pred_b.μ, f2.(u_test); atol = 0.01))
     end
 end

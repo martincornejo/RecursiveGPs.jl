@@ -62,20 +62,20 @@ end
 
 
 """
-    predict_gp(kf, b::Real, x::AbstractArray, R::AbstractMatrix)
+    predict_gp(kf, b::AbstractVector, x::AbstractArray, R::AbstractMatrix)
 
-Core implementation of the GP-KF projection at a single point `b`
+Core implementation of the GP-KF projection at a vector of query points `b`.
 
 # Arguments
 - `kf`: The Extended Kalman Filter.
-- `b`: The scalar input point.
-- `x`: State vector, default internal `state(kf)``.
-- `R`: Sate covariance matrix, defaul internal `covariance(kf)`.
+- `b`: Vector of input query points.
+- `x`: State vector, default internal `state(kf)`.
+- `R`: State covariance matrix, default internal `covariance(kf)`.
 
 # Returns
-A `NamedTuple` `(; μ, σ)` containing:
-- `μ`: The projected mean.
-- `σ`: The projected standard deviation.
+A `NamedTuple` `(; μ, Σ)` containing:
+- `μ`: The projected mean vector.
+- `Σ`: The projected covariance matrix.
 
 # Mathematical Details
 The prediction accounts for both the GP's intrinsic uncertainty and the filter's state uncertainty:
@@ -88,15 +88,14 @@ Where ``R_2`` is the GP conditional variance.
 # References
  - M. F. Huber, "Recursive Gaussian process regression," 2013 IEEE International Conference on Acoustics, Speech and Signal Processing, Vancouver, BC, Canada, 2013, pp. 3362-3366, doi: 10.1109/ICASSP.2013.6638281.
 """
-function predict_gp(kf, b::Real, x::AbstractArray = state(kf), R::AbstractMatrix = covariance(kf))
+function predict_gp(kf, b::AbstractArray, x::AbstractArray = state(kf), R::AbstractMatrix = covariance(kf))
     (; gp, b0, μ0, Σ0⁻¹) = kf.p.rgp
 
     H = cov(gp, b, b0) * Σ0⁻¹
     m = mean(gp, b)
     μ = H * (x - μ0) + m
 
-    R2 = gp.kernel(b, b) - H * cov(gp, b0, b) #eq.7
+    R2 = cov(gp, b) - H * cov(gp, b0, b) #eq.7
     Σ = R2 + H * R * H' #eq.9
-    σ = sqrt(Σ)
-    return (; μ, σ)
+    return (; μ, Σ)
 end

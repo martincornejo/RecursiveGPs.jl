@@ -3,14 +3,16 @@ using Random
 using AbstractGPs
 using LinearAlgebra
 using ComponentArrays
+using StaticArrays
 using ForwardDiff
 using Optimization
 using OptimizationOptimJL
 using LineSearches
 using LowLevelParticleFilters
+using CairoMakie
 
 
-# === optiimzaation functions
+# === optimization functions
 function softplus(x)
     return 1 / (1 + exp(-x))
 end
@@ -30,11 +32,11 @@ function build_kf(θ, ϑ)
     end
 
     function measurement(x, u, p, t)
-        return [measurement_gp(p.rgp1, x, u)]
+        return measurement_gp(p.rgp1, x, u) |> SVector{1}
     end
 
     function R2(x, u, p, t)
-        return [θ.R2]
+        return SMatrix{1, 1}(θ.R2)
     end
     return make_ekf(components, dynamics, measurement, R2)
 end
