@@ -70,14 +70,14 @@ using LineSearches
         @test unc ≥ 0
     end
 
-    @testset "make_ekf + train" begin
-        kf = make_ekf(rgp1)
+    @testset "ExtendedKalmanFilter + train" begin
+        kf = ExtendedKalmanFilter(rgp1)
         for (u, y) in zip(us, ys)
             kf(u, y)
         end
     end
 
-    kf = make_ekf(rgp1)
+    kf = ExtendedKalmanFilter(rgp1)
     for (u, y) in zip(us, ys)
         kf(u, y)
     end
@@ -143,7 +143,7 @@ end
     ys = [SA[y] for y in ys_raw]
     us = [[b, i] for (b, i) in zip(bs, is)]
 
-    kf = make_ekf(components, dynamics, measurement, R2)
+    kf = ExtendedKalmanFilter(components, dynamics, measurement, R2)
     xid = kf.p.xid
     Σid = kf.p.Σid
 
@@ -229,7 +229,7 @@ end
         b0 = collect(range(0, 1, length = ϑ.n_basis))
         gp = GP(ConstMean(ϑ.mean), θ.σ * with_lengthscale(SEKernel(), θ.ℓ))
         rgp = RGP(gp, b0)
-        make_ekf(rgp)
+        ExtendedKalmanFilter(rgp)
     end
 
     function loss_single(θ, p)
@@ -323,7 +323,7 @@ end
             R1 + u[2]^2 * R2 |> SMatrix{1, 1}
         end
 
-        make_ekf(components, dynamics, measurement, R2)
+        ExtendedKalmanFilter(components, dynamics, measurement, R2)
     end
 
     function loss_combined(θ, p)

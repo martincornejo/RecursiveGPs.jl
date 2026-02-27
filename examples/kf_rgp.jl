@@ -31,7 +31,7 @@ begin
     kernel1 = 0.01 * with_lengthscale(SEKernel(), 0.3)
     rgp1 = RGP(m1, kernel1, b0)
 
-    kf = make_ekf(rgp1)
+    kf = ExtendedKalmanFilter(rgp1)
 
 end
 

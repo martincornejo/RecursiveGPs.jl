@@ -1,7 +1,21 @@
-function make_ekf(rgp::RGP; ny::Int = 1, nu::Int = 1, p::NamedTuple = (;))
+"""
+    ExtendedKalmanFilter(rgp::RGP; ny=1, nu=1, p=(;), kwargs...)
+
+Construct an `ExtendedKalmanFilter` for a single [`RGP`](@ref) model.
+
+The state is the GP function values at the basis points `b0`. Dynamics is set to
+identity, the measurement model uses [`measurement_gp`](@ref), and the measurement
+noise covariance uses [`uncertainty_gp`](@ref).
+
+# Arguments
+- `rgp`: The [`RGP`](@ref) model.
+- `ny`, `nu`: Output and input dimensions.
+- `p`: Additional parameters merged into the filter's parameter tuple.
+- `kwargs...`: Forwarded to the base `ExtendedKalmanFilter` constructor.
+"""
+function ExtendedKalmanFilter(rgp::RGP; ny::Int = 1, nu::Int = 1, p::NamedTuple = (;), kwargs...)
 
     dynamics(x, u, p, t) = x # identity
-    # Ajac = I(nx)
 
     measurement(x, u, p, t) = measurement_gp(p.rgp, x, u) |> SVector{ny}
 
@@ -16,7 +30,7 @@ function make_ekf(rgp::RGP; ny::Int = 1, nu::Int = 1, p::NamedTuple = (;))
 
     p = (; rgp, p...)
 
-    return ExtendedKalmanFilter(dynamics, measurement, R1, R2, d0; p, nx, nu, ny)
+    return ExtendedKalmanFilter(dynamics, measurement, R1, R2, d0; p, nx, nu, ny, kwargs...)
 end
 
 

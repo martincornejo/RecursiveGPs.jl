@@ -58,7 +58,7 @@ end
 
 # Instantiation and Training
 begin
-    kf = make_ekf(components, dynamics, measurement, R2)
+    kf = ExtendedKalmanFilter(components, dynamics, measurement, R2)
     for (u, y) in zip(us, ys)
         kf(u, y)
     end

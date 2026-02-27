@@ -1,23 +1,27 @@
 """
-    make_ekf(components, dynamics, measurement, R2; Ajac=nothing, Cjac=nothing, p=(;), ny=1, nu=1)
+    ExtendedKalmanFilter(components, dynamics, measurement, R2; Ajac=nothing, Cjac=nothing, p=(;), ny=1, nu=1, kwargs...)
 
-Constructs an `ExtendedKalmanFilter` from `LowLevelParticleFilters.jl` using a structured state representation.
+Construct an `ExtendedKalmanFilter` with a structured, named state representation.
+
+The state is a `ComponentVector` formed by concatenating the `μ0` vectors of each
+component. The initial covariance and process noise are block-diagonal matrices built
+from each component's `Σ0` and `R1`. Each component is stored in the filter's parameter
+tuple under its key, alongside `xid` and `Σid` axes for slicing with [`state`](@ref) and
+[`covariance`](@ref).
 
 # Arguments
-- `components`: A NamedTuple where each key is a state component ID and each value contains `μ0` (initial mean), `Σ0` (initial covariance), and `R1` (process noise).
-- `dynamics`: The state transition function \$x_{t+1} = f(x_t, u_t, p, t)\$.
-- `measurement`: The observation function \$y_t = h(x_t, u_t, p, t)\$.
-- `R2`: A function returning the measurement noise covariance matrix.
-- `Ajac`, `Cjac`: Optional Jacobians for the dynamics and measurement models.
-- `p`: Additional parameters passed to the filter.
-- `ny`: Number of outputs (measurement dimension).
-- `nu`: Number of inputs (control dimension).
-
-# Returns
-- An `ExtendedKalmanFilter` initialized with a `ComponentVector` state and structured covariance matrices.
+- `components`: A `NamedTuple` keyed by component ID. Each value must have fields
+  `μ0` (initial mean vector), `Σ0` (initial covariance matrix), and `R1` (process noise
+  matrix). Typical values are [`RGP`](@ref) models, but any struct with these fields works.
+- `dynamics`: State transition function `f(x, u, p, t)`.
+- `measurement`: Observation function `h(x, u, p, t)`.
+- `R2`: Measurement noise covariance function `R2(x, u, p, t)`.
+- `Ajac`, `Cjac`: Optional Jacobians (see base `ExtendedKalmanFilter`).
+- `p`: Additional parameters merged into the filter's parameter tuple.
+- `ny`, `nu`: Output and input dimensions.
+- `kwargs...`: Forwarded to the base `ExtendedKalmanFilter` constructor.
 """
-
-function make_ekf(components::NamedTuple, dynamics, measurement::Function, R2::Function; Ajac = nothing, Cjac = nothing, p::NamedTuple = (;), ny::Int64 = 1, nu::Int64 = 1)
+function ExtendedKalmanFilter(components::NamedTuple, dynamics, measurement::Function, R2::Function; p::NamedTuple = (;), ny::Int64 = 1, nu::Int64 = 1, kwargs...)
     ids = keys(components)
 
     T = mapreduce(c -> promote_type(eltype(c.μ0), eltype(c.Σ0), eltype(c.R1)), promote_type, components; init = Float64)
@@ -44,7 +48,7 @@ function make_ekf(components::NamedTuple, dynamics, measurement::Function, R2::F
         p...,
     )
 
-    return ExtendedKalmanFilter(dynamics, measurement, R1, R2, d0; Ajac, Cjac, nx, nu, ny, p)
+    return ExtendedKalmanFilter(dynamics, measurement, R1, R2, d0; nx, nu, ny, p, kwargs...)
 end
 
 """

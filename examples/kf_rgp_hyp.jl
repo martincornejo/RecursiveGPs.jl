@@ -38,7 +38,7 @@ function build_kf(θ, ϑ)
     function R2(x, u, p, t)
         return SMatrix{1, 1}(θ.R2)
     end
-    return make_ekf(components, dynamics, measurement, R2)
+    return ExtendedKalmanFilter(components, dynamics, measurement, R2)
 end
 
 

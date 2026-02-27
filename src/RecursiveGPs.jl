@@ -1,17 +1,19 @@
 module RecursiveGPs
 
 export RGP, measurement_gp, uncertainty_gp
-export make_ekf, predict_gp, predict_kf
-using Statistics
-using LinearAlgebra
-using AbstractGPs
-using StaticArrays
-using ForwardDiff # for jacobians
-using PreallocationTools
-using ComponentArrays
+export predict_gp, predict_kf
+export ExtendedKalmanFilter
 
+using AbstractGPs
+using ComponentArrays
+using ForwardDiff
+using LinearAlgebra
+using PreallocationTools
+using StaticArrays
+using Statistics
 using LowLevelParticleFilters
 import LowLevelParticleFilters as LLPF
+import LowLevelParticleFilters: ExtendedKalmanFilter
 
 include("rgp.jl")
 include("kalman.jl")
