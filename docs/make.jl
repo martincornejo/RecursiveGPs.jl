@@ -41,3 +41,7 @@ makedocs(
         "API Reference" => "api.md",
     ],
 )
+
+deploydocs(
+    repo = "github.com/martincornejo/RecursiveGPs.jl.git",
+)
