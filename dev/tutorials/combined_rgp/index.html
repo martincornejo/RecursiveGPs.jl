@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Multi-Component RGPs · RecursiveGPs.jl</title><meta name="title" content="Multi-Component RGPs · RecursiveGPs.jl"/><meta property="og:title" content="Multi-Component RGPs · RecursiveGPs.jl"/><meta property="twitter:title" content="Multi-Component RGPs · RecursiveGPs.jl"/><meta name="description" content="Documentation for RecursiveGPs.jl."/><meta property="og:description" content="Documentation for RecursiveGPs.jl."/><meta property="twitter:description" content="Documentation for RecursiveGPs.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">RecursiveGPs.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../getting_started/">Getting Started</a></li><li><a class="tocitem" href="../../math_background/">Mathematical Background</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../basic_rgp/">Basic RGP</a></li><li class="is-active"><a class="tocitem" href>Multi-Component RGPs</a><ul class="internal"><li><a class="tocitem" href="#Problem-Setup"><span>Problem Setup</span></a></li><li><a class="tocitem" href="#Dataset"><span>Dataset</span></a></li><li><a class="tocitem" href="#Define-RGP-Components"><span>Define RGP Components</span></a></li><li><a class="tocitem" href="#Dynamics,-Measurement,-and-Noise"><span>Dynamics, Measurement, and Noise</span></a></li><li><a class="tocitem" href="#Construct-and-Train-the-Filter"><span>Construct and Train the Filter</span></a></li><li><a class="tocitem" href="#Predict-Output"><span>Predict Output</span></a></li><li><a class="tocitem" href="#Plot-Output-vs-Ground-Truth"><span>Plot Output vs Ground Truth</span></a></li><li><a class="tocitem" href="#Extract-Individual-Component-Predictions"><span>Extract Individual Component Predictions</span></a></li></ul></li><li><a class="tocitem" href="../hyperparameter_tuning/">Hyperparameter Tuning</a></li></ul></li><li><a class="tocitem" href="../../api/">API Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Tutorials</a></li><li class="is-active"><a href>Multi-Component RGPs</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Multi-Component RGPs</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/martincornejo/RecursiveGPs.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/martincornejo/RecursiveGPs.jl/blob/main/docs/src/tutorials/combined_rgp.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Multi-Component-RGPs"><a class="docs-heading-anchor" href="#Multi-Component-RGPs">Multi-Component RGPs</a><a id="Multi-Component-RGPs-1"></a><a class="docs-heading-anchor-permalink" href="#Multi-Component-RGPs" title="Permalink"></a></h1><p>This tutorial shows how to compose multiple RGPs into a single Extended Kalman Filter to model outputs that depend on several latent functions.</p><h2 id="Problem-Setup"><a class="docs-heading-anchor" href="#Problem-Setup">Problem Setup</a><a id="Problem-Setup-1"></a><a class="docs-heading-anchor-permalink" href="#Problem-Setup" title="Permalink"></a></h2><p>We observe</p><p class="math-container">\[y_t = f_1(u_1) + u_2 \cdot f_2(u_1)\]</p><p>where <span>$f_1(b) = e^b$</span> and <span>$f_2(b) = 0.1 + 0.5b + 0.1\sin(2\pi b)$</span>. The input <span>$u_2$</span> is a scalar gain, so neither function is directly observed — only their weighted sum is.</p><pre><code class="language-julia hljs">using RecursiveGPs
+using AbstractGPs
+using StaticArrays
+using ComponentArrays
+using LinearAlgebra
+using Random
+using CairoMakie</code></pre><h2 id="Dataset"><a class="docs-heading-anchor" href="#Dataset">Dataset</a><a id="Dataset-1"></a><a class="docs-heading-anchor-permalink" href="#Dataset" title="Permalink"></a></h2><pre><code class="language-julia hljs">Random.seed!(123)
+
+f1(b) = exp(b)
+f2(b) = 0.1 + 0.5 * b + 0.1 * sinpi(b * 2)
+
+n   = 100
+ts  = collect(range(0, 100, n))
+u1  = 0.1 .+ rand(n) / 1.5
+u2  = 0.2 .* randn(n)
+gt  = @. f1(u1) + u2 * f2(u1)
+
+ys  = [SA[y] for y in gt]
+us  = [(; u1 = u1[i], u2 = u2[i]) for i in 1:n];</code></pre><h2 id="Define-RGP-Components"><a class="docs-heading-anchor" href="#Define-RGP-Components">Define RGP Components</a><a id="Define-RGP-Components-1"></a><a class="docs-heading-anchor-permalink" href="#Define-RGP-Components" title="Permalink"></a></h2><p>Each latent function gets its own <code>RGP</code> with a separate kernel. Both share the same basis-point grid.</p><pre><code class="language-julia hljs">b0 = collect(0:0.05:1)
+
+rgp_a = RGP(0.8 * with_lengthscale(SEKernel(), 0.3), b0)   # models f1
+rgp_b = RGP(0.1 * with_lengthscale(SEKernel(), 0.3), b0)   # models f2
+
+components = (; a = rgp_a, b = rgp_b);</code></pre><h2 id="Dynamics,-Measurement,-and-Noise"><a class="docs-heading-anchor" href="#Dynamics,-Measurement,-and-Noise">Dynamics, Measurement, and Noise</a><a id="Dynamics,-Measurement,-and-Noise-1"></a><a class="docs-heading-anchor-permalink" href="#Dynamics,-Measurement,-and-Noise" title="Permalink"></a></h2><p>The KF state is the concatenation of the two component states: <span>$x = [g^{(a)}; g^{(b)}]$</span>.</p><p><strong>Dynamics</strong>: identity (both GPs are stationary in the index domain).</p><pre><code class="language-julia hljs">dynamics(x, u, p, t) = x</code></pre><p><strong>Measurement</strong>: combine component outputs according to the observation model. <code>xid</code> axes are stored in <code>p</code> for slicing <code>x</code> into named components.</p><pre><code class="language-julia hljs">function measurement(x, u, p, t)
+    (; xid) = p
+    xc = ComponentVector(x, xid)
+    μ1 = measurement_gp(p.a, xc.a, u[1])
+    μ2 = measurement_gp(p.b, xc.b, u[1])
+    return (μ1 + u[2] * μ2) |&gt; SVector{1}
+end</code></pre><p><strong>Noise covariance</strong>: GP conditional variances, propagated through the observation model using the chain rule of variance.</p><pre><code class="language-julia hljs">function R2(x, u, p, t)
+    r1 = uncertainty_gp(p.a, u[1])
+    r2 = uncertainty_gp(p.b, u[1])
+    return (r1 + u[2]^2 * r2) |&gt; SMatrix{1, 1}
+end</code></pre><h2 id="Construct-and-Train-the-Filter"><a class="docs-heading-anchor" href="#Construct-and-Train-the-Filter">Construct and Train the Filter</a><a id="Construct-and-Train-the-Filter-1"></a><a class="docs-heading-anchor-permalink" href="#Construct-and-Train-the-Filter" title="Permalink"></a></h2><pre><code class="language-julia hljs">kf = ExtendedKalmanFilter(components, dynamics, measurement, R2)
+
+for (u, y) in zip(us, ys)
+    kf(u, y)
+end</code></pre><h2 id="Predict-Output"><a class="docs-heading-anchor" href="#Predict-Output">Predict Output</a><a id="Predict-Output-1"></a><a class="docs-heading-anchor-permalink" href="#Predict-Output" title="Permalink"></a></h2><pre><code class="language-julia hljs">pred_μ = Float64[]
+pred_σ = Float64[]
+
+for u in us
+    p = predict_kf(kf, u)
+    push!(pred_μ, p.μ[1])
+    push!(pred_σ, sqrt(p.Σ[1, 1]))
+end</code></pre><h2 id="Plot-Output-vs-Ground-Truth"><a class="docs-heading-anchor" href="#Plot-Output-vs-Ground-Truth">Plot Output vs Ground Truth</a><a id="Plot-Output-vs-Ground-Truth-1"></a><a class="docs-heading-anchor-permalink" href="#Plot-Output-vs-Ground-Truth" title="Permalink"></a></h2><pre><code class="language-julia hljs">fig1 = Figure()
+ax1  = CairoMakie.Axis(fig1[1, 1]; title = &quot;Combined RGP output&quot;)
+
+lines!(ax1,  ts, gt;     label = &quot;Ground truth&quot;)
+lines!(ax1,  ts, pred_μ; color = :orange, label = &quot;Posterior mean&quot;)
+band!(ax1,   ts,
+      pred_μ .+ 2 .* pred_σ,
+      pred_μ .- 2 .* pred_σ;
+      color = (:orange, 0.3))
+scatter!(ax1, ts, gt; color = :red, markersize = 4, label = &quot;Training data&quot;)
+
+axislegend(ax1)
+fig1</code></pre><h2 id="Extract-Individual-Component-Predictions"><a class="docs-heading-anchor" href="#Extract-Individual-Component-Predictions">Extract Individual Component Predictions</a><a id="Extract-Individual-Component-Predictions-1"></a><a class="docs-heading-anchor-permalink" href="#Extract-Individual-Component-Predictions" title="Permalink"></a></h2><p>Use <code>predict_gp</code> with a component symbol to query each latent function independently.</p><pre><code class="language-julia hljs">b_plot = collect(range(0.0, 1.0, length = 100))
+
+pred_a = predict_gp(kf, b_plot, :a)
+pred_b = predict_gp(kf, b_plot, :b)
+σ_a    = sqrt.(diag(pred_a.Σ))
+σ_b    = sqrt.(diag(pred_b.Σ))
+
+fig2 = Figure()
+axs  = [CairoMakie.Axis(fig2[i, 1]) for i in 1:2]
+
+axs[1].title = &quot;Component a:  f₁(b) = exp(b)&quot;
+lines!(axs[1], b_plot, f1.(b_plot);   label = &quot;Ground truth&quot;)
+lines!(axs[1], b_plot, pred_a.μ;      color = :orange, label = &quot;Posterior mean&quot;)
+band!(axs[1],  b_plot,
+      pred_a.μ .+ 2 .* σ_a,
+      pred_a.μ .- 2 .* σ_a;
+      color = (:orange, 0.3))
+scatter!(axs[1], u1, f1.(u1); color = :red, label = &quot;Training inputs&quot;)
+
+axs[2].title = &quot;Component b:  f₂(b) = 0.1 + 0.5b + 0.1sin(2πb)&quot;
+lines!(axs[2], b_plot, f2.(b_plot);   label = &quot;Ground truth&quot;)
+lines!(axs[2], b_plot, pred_b.μ;      color = :orange, label = &quot;Posterior mean&quot;)
+band!(axs[2],  b_plot,
+      pred_b.μ .+ 2 .* σ_b,
+      pred_b.μ .- 2 .* σ_b;
+      color = (:orange, 0.3))
+scatter!(axs[2], u1, f2.(u1); color = :red, label = &quot;Training inputs&quot;)
+
+axislegend.(axs; position = :rb)
+fig2</code></pre><blockquote><p><strong>Note</strong></p><p><code>state(kf, :a)</code> and <code>covariance(kf, :a)</code> give direct access to the component sub-state and covariance block without projecting onto query points. See the API Reference for full signatures.</p></blockquote><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../basic_rgp/">« Basic RGP</a><a class="docs-footer-nextpage" href="../hyperparameter_tuning/">Hyperparameter Tuning »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Friday 27 February 2026 16:00">Friday 27 February 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
