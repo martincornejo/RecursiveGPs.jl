@@ -65,7 +65,7 @@ physical states, together with arbitrary dynamics and measurement functions.
 
 | Section | Description |
 |---------|-------------|
-| [Getting Started](@ref) | Installation and a first example, step by step |
+| [Getting Started](@ref) | Installation and a first example with figure, step by step |
 | [Mathematical Background](@ref) | GP regression, the recursive GP, and coupling to physical models |
-| [Tutorials](@ref "Basic RGP with Kalman Filter") | Worked examples with executed code and figures |
+| [Tutorials](@ref "Multi-Component RGPs") | Worked examples with executed code and figures |
 | [API Reference](@ref) | Docstrings of all exported functions |

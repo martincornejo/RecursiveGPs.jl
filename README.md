@@ -70,7 +70,6 @@ The [documentation](https://martincornejo.github.io/RecursiveGPs.jl/dev/) contai
 a [theoretical introduction](https://martincornejo.github.io/RecursiveGPs.jl/dev/math_background/)
 to GP regression and the recursive GP, and the following tutorials:
 
-- [Basic RGP](https://martincornejo.github.io/RecursiveGPs.jl/dev/tutorials/basic_rgp/): learning a single function
 - [Multi-Component RGPs](https://martincornejo.github.io/RecursiveGPs.jl/dev/tutorials/combined_rgp/): several functions in one measurement
 - [Hyperparameter Tuning](https://martincornejo.github.io/RecursiveGPs.jl/dev/tutorials/hyperparameter_tuning/): maximum likelihood with automatic differentiation
 - [Learning Missing Physics](https://martincornejo.github.io/RecursiveGPs.jl/dev/tutorials/friction_learning/): an unknown friction law in an equation of motion
