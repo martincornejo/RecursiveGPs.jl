@@ -1,7 +1,8 @@
 # # Multi-Component RGPs
 #
-# This tutorial shows how to compose multiple RGPs into a single Extended
-# Kalman Filter to model outputs that depend on several latent functions.
+# A measurement can depend on several unknown functions. Each function is
+# represented by its own RGP, and one extended Kalman filter learns all of them
+# from the same measurements.
 #
 # ## Problem Setup
 #
@@ -10,8 +11,9 @@
 # y_t = f_1(u_1) + u_2 \cdot f_2(u_1)
 # ```
 # where ``f_1(b) = e^b`` and ``f_2(b) = 0.1 + 0.5b + 0.1\sin(2\pi b)``.
-# The input ``u_2`` is a scalar gain, so neither function is directly
-# observed — only their weighted sum is.
+# The input ``u_2`` is a scalar gain. Neither function is observed directly,
+# only their weighted sum. The two functions can be separated because ``u_2``
+# varies between measurements. The observations are noise-free.
 
 using RecursiveGPs
 using AbstractGPs
@@ -54,7 +56,7 @@ components = (; a = rgp_a, b = rgp_b);
 # The KF state is the concatenation of the two component states:
 # ``x = [g^{(a)}; g^{(b)}]``.
 #
-# **Dynamics**: identity (both GPs are stationary in the index domain).
+# **Dynamics**: identity, since both functions are constant in time.
 
 dynamics(x, u, p, t) = x
 
@@ -69,8 +71,9 @@ function measurement(x, u, p, t)
     return (μ1 + u[2] * μ2) |> SVector{1}
 end
 
-# **Noise covariance**: GP conditional variances, propagated through the
-# observation model using the chain rule of variance.
+# **Noise covariance**: the residual variances of both GPs, weighted by the
+# squared coefficients of the measurement. The observations are noise-free, so no
+# sensor noise is added.
 
 function R2(x, u, p, t)
     r1 = uncertainty_gp(p.a, u[1])
@@ -99,18 +102,19 @@ end
 
 # ## Plot Output vs Ground Truth
 
-fig1 = Figure()
-ax1  = CairoMakie.Axis(fig1[1, 1]; title = "Combined RGP output")
+fig1 = Figure(size = (800, 450))
+ax1  = CairoMakie.Axis(fig1[1, 1]; title = "Combined RGP output", xlabel = "t", ylabel = "y")
 
 lines!(ax1,  ts, gt;     label = "Ground truth")
-lines!(ax1,  ts, pred_μ; color = :orange, label = "Posterior mean")
+lines!(ax1,  ts, pred_μ; color = :orange, label = "Posterior μ ± 2σ")
 band!(ax1,   ts,
       pred_μ .+ 2 .* pred_σ,
       pred_μ .- 2 .* pred_σ;
-      color = (:orange, 0.3))
+      color = (:orange, 0.3), label = "Posterior μ ± 2σ")
 scatter!(ax1, ts, gt; color = :red, markersize = 4, label = "Training data")
 
-axislegend(ax1)
+xlims!(ax1, extrema(ts))
+Legend(fig1[2, 1], ax1; orientation = :horizontal, framevisible = false, merge = true)
 fig1
 
 # ## Extract Individual Component Predictions
@@ -125,28 +129,31 @@ pred_b = predict_gp(kf, b_plot, :b)
 σ_a    = sqrt.(diag(pred_a.Σ))
 σ_b    = sqrt.(diag(pred_b.Σ))
 
-fig2 = Figure()
-axs  = [CairoMakie.Axis(fig2[i, 1]) for i in 1:2]
+fig2 = Figure(size = (800, 420))
+axs  = [CairoMakie.Axis(fig2[1, i]; xlabel = "b") for i in 1:2]
 
 axs[1].title = "Component a:  f₁(b) = exp(b)"
+axs[1].ylabel = "f₁(b)"
 lines!(axs[1], b_plot, f1.(b_plot);   label = "Ground truth")
-lines!(axs[1], b_plot, pred_a.μ;      color = :orange, label = "Posterior mean")
+lines!(axs[1], b_plot, pred_a.μ;      color = :orange, label = "Posterior μ ± 2σ")
 band!(axs[1],  b_plot,
       pred_a.μ .+ 2 .* σ_a,
       pred_a.μ .- 2 .* σ_a;
-      color = (:orange, 0.3))
+      color = (:orange, 0.3), label = "Posterior μ ± 2σ")
 scatter!(axs[1], u1, f1.(u1); color = :red, label = "Training inputs")
 
 axs[2].title = "Component b:  f₂(b) = 0.1 + 0.5b + 0.1sin(2πb)"
+axs[2].ylabel = "f₂(b)"
 lines!(axs[2], b_plot, f2.(b_plot);   label = "Ground truth")
-lines!(axs[2], b_plot, pred_b.μ;      color = :orange, label = "Posterior mean")
+lines!(axs[2], b_plot, pred_b.μ;      color = :orange, label = "Posterior μ ± 2σ")
 band!(axs[2],  b_plot,
       pred_b.μ .+ 2 .* σ_b,
       pred_b.μ .- 2 .* σ_b;
-      color = (:orange, 0.3))
+      color = (:orange, 0.3), label = "Posterior μ ± 2σ")
 scatter!(axs[2], u1, f2.(u1); color = :red, label = "Training inputs")
 
-axislegend.(axs; position = :rb)
+xlims!.(axs, Ref(extrema(b_plot)))
+Legend(fig2[2, 1:2], axs[1]; orientation = :horizontal, framevisible = false, merge = true)
 fig2
 
 # !!! note

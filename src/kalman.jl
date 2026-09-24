@@ -7,6 +7,11 @@ The state is the GP function values at the basis points `b0`. Dynamics is set to
 identity, the measurement model uses [`measurement_gp`](@ref), and the measurement
 noise covariance uses [`uncertainty_gp`](@ref).
 
+!!! note
+    The measurement noise is the residual variance ``r(u)`` only and does not include
+    sensor noise. For noisy data, use the multi-component constructor and add the
+    sensor noise variance in `R2`.
+
 # Arguments
 - `rgp`: The [`RGP`](@ref) model.
 - `ny`, `nu`: Output and input dimensions.
@@ -76,31 +81,24 @@ end
 
 
 """
-    predict_gp(kf, b::AbstractVector, x::AbstractArray, R::AbstractMatrix)
+    predict_gp(kf, b::AbstractVector, x = state(kf), P = covariance(kf))
 
-Core implementation of the GP-KF projection at a vector of query points `b`.
+Posterior of the function at the query points `b`, for a filter built with
+`ExtendedKalmanFilter(rgp)`. With interpolation weights
+``H^* = K_{b b_0}\\,\\Sigma_0^{-1}``, filter mean ``\\hat g = x`` and covariance ``P``:
 
-# Arguments
-- `kf`: The Extended Kalman Filter.
-- `b`: Vector of input query points.
-- `x`: State vector, default internal `state(kf)`.
-- `R`: State covariance matrix, default internal `covariance(kf)`.
+```math
+\\begin{aligned}
+\\mu^* &= m(b) + H^*(\\hat g - \\mu_0) \\\\
+\\Sigma^* &= H^* P H^{*\\top} + K_{bb} - H^* K_{b_0 b}
+\\end{aligned}
+```
 
-# Returns
-A `NamedTuple` `(; μ, Σ)` containing:
-- `μ`: The projected mean vector.
-- `Σ`: The projected covariance matrix.
+The first term of ``\\Sigma^*`` is the uncertainty of the basis values, the second the
+residual between basis points. ``\\Sigma^*`` excludes sensor noise. See
+[Prediction at new inputs](@ref) in the Mathematical Background.
 
-# Mathematical Details
-The prediction accounts for both the GP's intrinsic uncertainty and the filter's state uncertainty:
-1. **Gain**: ``H = cov(gp, b, b_0) \\Sigma_0^{-1}``
-2. **Mean**: ``\\mu = H(x' - \\mu_0) + m(b)``
-3. **Covariance**: ``\\Sigma = R_2 + H R' H^T``
-
-Where ``R_2`` is the GP conditional variance.
-
-# References
- - M. F. Huber, "Recursive Gaussian process regression," 2013 IEEE International Conference on Acoustics, Speech and Signal Processing, Vancouver, BC, Canada, 2013, pp. 3362-3366, doi: 10.1109/ICASSP.2013.6638281.
+Returns a `NamedTuple` `(; μ, Σ)`.
 """
 function predict_gp(kf, b::AbstractArray, x::AbstractArray = state(kf), R::AbstractMatrix = covariance(kf))
     (; gp, b0, μ0, Σ0⁻¹) = kf.p.rgp
@@ -109,7 +107,7 @@ function predict_gp(kf, b::AbstractArray, x::AbstractArray = state(kf), R::Abstr
     m = mean(gp, b)
     μ = H * (x - μ0) + m
 
-    R2 = cov(gp, b) - H * cov(gp, b0, b) #eq.7
-    Σ = R2 + H * R * H' #eq.9
+    R2 = cov(gp, b) - H * cov(gp, b0, b) # residual covariance between basis points
+    Σ = R2 + H * R * H' # plus uncertainty of the basis values
     return (; μ, Σ)
 end

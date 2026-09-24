@@ -2,11 +2,12 @@
 
 ## Installation
 
-RecursiveGPs.jl is a registered Julia package. Install it from the Julia REPL:
+RecursiveGPs.jl is not yet registered in the General registry. Install it from
+GitHub:
 
 ```julia
 using Pkg
-Pkg.add("RecursiveGPs")
+Pkg.add(url = "https://github.com/martincornejo/RecursiveGPs.jl")
 ```
 
 The package depends on [AbstractGPs.jl](https://github.com/JuliaGaussianProcesses/AbstractGPs.jl)
@@ -14,112 +15,129 @@ for kernel definitions and
 [LowLevelParticleFilters.jl](https://github.com/baggepinnen/LowLevelParticleFilters.jl)
 for the Kalman Filter backend.
 
----
+## A first example
 
-## Required Imports
+The following example covers the basic workflow of the package. A GP prior is placed
+on a set of basis points and wrapped in a Kalman filter. The filter learns an unknown
+scalar function from noisy samples, one sample at a time, and the learned function
+is then evaluated at arbitrary inputs together with its uncertainty.
 
-```julia
-using RecursiveGPs       # RGP, ExtendedKalmanFilter, predict_gp, predict_kf
-using AbstractGPs        # GP, SEKernel, with_lengthscale, …
-using StaticArrays       # SA[y] for static observation vectors
-using LinearAlgebra      # diag, etc.
+```@example gs
+using RecursiveGPs     # RGP, ExtendedKalmanFilter, measurement_gp, uncertainty_gp, predict_gp
+using AbstractGPs      # kernels
+using StaticArrays     # static vectors and matrices for the filter
+using LinearAlgebra    # diag
+using Random
+using CairoMakie
 ```
 
----
+### 1. Data
 
-## Minimal Working Example
+100 samples of ``f(u) = 0.5u + 0.1\sin(2\pi u)`` on ``[0.1, 0.8]``, with sensor noise
+of standard deviation 0.005:
 
-This section walks through fitting a single RGP to noisy scalar observations.
+```@example gs
+Random.seed!(42)
+f(u) = 0.5u + 0.1 * sinpi(2u)
+σn = 0.005
 
-### 1 — Generate Data
-
-```julia
-f(b) = 0.5 * b + 0.1 * sinpi(b * 2)   # ground-truth function
-
-n  = 100
-us = 0.1 .+ rand(n) / 1.5             # inputs  ∈ [0.1, 0.77]
-ys = [SA[f(u) + 5e-3 * randn()] for u in us]  # noisy scalar observations
+us = 0.1 .+ 0.7 .* rand(100)
+ys = [SA[f(u) + σn * randn()] for u in us]
+nothing # hide
 ```
 
-### 2 — Define the Model
+### 2. GP prior
 
-An [`RGP`](@ref) is parameterized by:
-- a **kernel** (here a scaled squared-exponential),
-- a set of **basis points** `b0` covering the input domain.
+An [`RGP`](@ref) is defined by a kernel and a set of basis points that covers the
+input range. Here the kernel is a squared exponential with variance 0.1 and length
+scale 0.4, close to the maximum-likelihood values found in the
+[Hyperparameter Tuning](@ref "Hyperparameter Tuning") tutorial. The basis has 21
+points on ``[0, 1]``:
 
-```julia
-kernel = 0.01 * with_lengthscale(SEKernel(), 0.3)
-b0     = collect(0:0.05:1)   # 21 evenly-spaced basis points
+```@example gs
+kernel = 0.1 * with_lengthscale(SEKernel(), 0.4)
+b0 = collect(range(0, 1, length = 21))
 
 rgp = RGP(kernel, b0)
+nothing # hide
 ```
 
-Optionally, you can supply a mean function:
+A mean function can be passed as the first argument, for example
+`RGP(u -> 0.5u, kernel, b0)`.
 
-```julia
-m(x)   = 0.1 + 0.5x
-rgp_m  = RGP(m, kernel, b0)
+### 3. Filter
+
+The filter state is the vector of GP values at the basis points, initialised with the
+prior mean and covariance. The function is constant in time, so the dynamics are the
+identity. The measurement is the GP mean at the input, and the measurement noise is
+the residual variance of the GP plus the sensor noise variance:
+
+```@example gs
+dynamics(x, u, p, t) = x
+measurement(x, u, p, t) = SA[measurement_gp(p.f, x, u)]
+R2(x, u, p, t) = @SMatrix [uncertainty_gp(p.f, u) + σn^2]
+
+kf = ExtendedKalmanFilter((; f = rgp), dynamics, measurement, R2)
+nothing # hide
 ```
 
-### 3 — Wrap in an Extended Kalman Filter
+The named tuple `(; f = rgp)` names the component `f`. The component is available as
+`p.f` inside the model functions and selects it in [`predict_gp`](@ref).
 
-```julia
-kf = ExtendedKalmanFilter(rgp)
-```
+### 4. Learning
 
-The state of the KF is the vector of GP function values at `b0`, initialized
-with the prior mean and covariance of the GP.
+Each call `kf(u, y)` runs one prediction and one correction step:
 
-### 4 — Train Online
-
-Call the filter for each (input, observation) pair:
-
-```julia
+```@example gs
 for (u, y) in zip(us, ys)
     kf(u, y)
 end
 ```
 
-Each call runs one predict-correct cycle, updating the posterior distribution
-over GP values at the basis points.
+### 5. Prediction
 
-### 5 — Predict
+[`predict_gp`](@ref) returns the posterior mean and covariance of the function at any
+query points:
 
-After training, query the fitted function at any set of test points:
+```@example gs
+b = collect(range(0, 1, length = 200))
+post = predict_gp(kf, b, :f)
 
-```julia
-b_test = collect(range(0.0, 1.0, length = 200))
-pred   = predict_gp(kf, b_test)
-
-μ = pred.μ                        # posterior mean vector (length 200)
-σ = sqrt.(diag(pred.Σ))           # posterior std deviation
+μ = post.μ               # posterior mean
+σ = sqrt.(diag(post.Σ))  # posterior standard deviation
+nothing # hide
 ```
 
-To get the predicted *measurement* at a single input (including measurement
-noise modelled by the GP uncertainty):
+[`predict_kf`](@ref) returns the predicted measurement at a single input, including
+the measurement noise.
 
-```julia
-y_hat = predict_kf(kf, 0.5)      # returns (; μ, Σ)
+```@example gs
+fig = Figure(size = (800, 450))
+ax = CairoMakie.Axis(fig[1, 1]; xlabel = "u", ylabel = "f(u)")
+
+band!(ax, b, μ .- 2σ, μ .+ 2σ; color = (:orange, 0.3), label = "Posterior μ ± 2σ")
+lines!(ax, b, f.(b); label = "Ground truth")
+lines!(ax, b, μ; color = :orange, label = "Posterior μ ± 2σ")
+scatter!(ax, us, first.(ys); color = :red, markersize = 6, label = "Training data")
+
+xlims!(ax, extrema(b))
+ylims!(ax, 0.0, 0.55)
+axislegend(ax; position = :rb, merge = true)
+fig
 ```
 
----
+Within the training range, ``0.1 \le u \le 0.8``, the posterior mean follows the
+ground truth and the band contains it. Outside this range the band widens, and the
+estimate relies increasingly on the prior.
 
-## Key Objects
+!!! tip
+    The length scale sets how fast the learned function can vary. The basis spacing
+    should be well below the length scale, and more basis points reduce the
+    approximation error at the cost of a larger filter state.
 
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `rgp` | [`RGP`](@ref) | Recursive GP model: kernel + basis points + precomputed matrices |
-| `kf` | `ExtendedKalmanFilter` | KF whose state = GP values at `b0` |
-| `predict_gp` | function | Project posterior onto arbitrary query points |
-| `predict_kf` | function | Predicted measurement + innovation covariance |
+## Next steps
 
----
-
-## Next Steps
-
-- See the [Tutorials](@ref "Basic RGP with Kalman Filter") for plots and
-  multi-component models.
-- See [Mathematical Background](@ref) for the equations behind the scenes.
-- See [API Reference](@ref) for the full function signatures.
-- For **hyperparameter tuning**, see the
-  [Hyperparameter Tuning](@ref "Hyperparameter Tuning") tutorial.
+- [Tutorials](@ref "Multi-Component RGPs"): several GPs in one model, hyperparameter
+  tuning, and an RGP inside a physical model.
+- [Mathematical Background](@ref): derivation of the recursive GP.
+- [API Reference](@ref): all exported functions.

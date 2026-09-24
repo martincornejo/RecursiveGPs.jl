@@ -1,9 +1,10 @@
 # # Hyperparameter Tuning
 #
-# This tutorial shows how to tune the RGP kernel hyperparameters (variance
-# ``\sigma^2``, length-scale ``\ell``, and measurement noise ``R_2``)
-# using gradient-based optimisation via
-# [Optimization.jl](https://docs.sciml.ai/Optimization/stable/) and
+# The kernel hyperparameters and the sensor noise variance ``\sigma_n^2`` determine
+# how an RGP generalises from data. This tutorial starts from an initial guess and tunes
+# them by maximising the likelihood of the filter's one-step-ahead predictions,
+# using
+# [Optimization.jl](https://docs.sciml.ai/Optimization/stable/) with gradients from
 # [ForwardDiff.jl](https://juliadiff.org/ForwardDiff.jl/stable/).
 #
 # ## Setup
@@ -11,7 +12,6 @@
 using RecursiveGPs
 using AbstractGPs
 using StaticArrays
-using ComponentArrays
 using LinearAlgebra
 using ForwardDiff
 using Optimization
@@ -21,124 +21,133 @@ using LowLevelParticleFilters
 using Random
 using CairoMakie
 
-# ## Positivity Transformation
-#
-# Hyperparameters must be positive, but unconstrained optimisers work on
-# ``\mathbb{R}``.  We use a sigmoid (softplus-style) map
-# ``\theta_+ = \sigma(\theta) = 1/(1 + e^{-\theta})`` together with its
-# inverse to transform between the two spaces.
-
-sigmoid(x)     = 1 / (1 + exp(-x))
-inv_sigmoid(x) = log(x / (1 - x))
-
-# ## Model Factory
-#
-# `build_kf` constructs a fresh KF from a parameter vector.  This is called
-# inside the loss function and must be compatible with ForwardDiff dual numbers.
-
-function build_kf(θ, ϑ)
-    b0  = collect(range(0, 1, length = ϑ.n_basis))
-    gp  = GP(ConstMean(ϑ.mean), θ.σ * with_lengthscale(SEKernel(), θ.ℓ))
-    rgp = RGP(gp, b0)
-
-    dynamics(x, u, p, t)    = x
-    measurement(x, u, p, t) = measurement_gp(p.rgp1, x, u) |> SVector{1}
-    R2(x, u, p, t)           = SMatrix{1, 1}(θ.R2)
-
-    return ExtendedKalmanFilter((; rgp1 = rgp), dynamics, measurement, R2)
-end
-
 # ## Dataset
+#
+# 100 noisy observations of ``f(b) = 0.5b + 0.1\sin(2\pi b)``. The noise has
+# standard deviation 5e-3, so the true noise variance is 2.5e-5.
 
 Random.seed!(7)
-
 f(b) = 0.5 * b + 0.1 * sinpi(b * 2)
 
 n  = 100
 us = 0.1 .+ rand(n) / 1.5
 ys = [SA[f(u) + 5e-3 * randn()] for u in us];
 
+# ## Model Factory
+#
+# The kernel is a squared exponential with variance ``\sigma^2`` and length scale
+# ``\ell``:
+#
+# ```math
+# k(b, b') = \sigma^2 \exp\left(-\frac{(b - b')^2}{2\ell^2}\right)
+# ```
+#
+# Together with the sensor noise variance ``\sigma_n^2`` this gives three
+# hyperparameters to tune. The measurement noise `R2` is the residual variance of
+# the GP plus ``\sigma_n^2``.
+#
+# `build_kf` constructs a fresh filter from a set of hyperparameters. It is called
+# inside the loss function, so it has to accept ForwardDiff dual numbers.
+
+function build_kf(θ; n_basis = 20)
+    b0  = collect(range(0, 1, length = n_basis))
+    rgp = RGP(θ.σ² * with_lengthscale(SEKernel(), θ.ℓ), b0)
+
+    dynamics(x, u, p, t)    = x
+    measurement(x, u, p, t) = measurement_gp(p.rgp, x, u) |> SVector{1}
+    R2(x, u, p, t)          = @SMatrix [uncertainty_gp(p.rgp, u) + θ.σn²]
+
+    return ExtendedKalmanFilter((; rgp), dynamics, measurement, R2)
+end
+
+function fit(θ)
+    kf = build_kf(θ)
+    for (u, y) in zip(us, ys)
+        kf(u, y)
+    end
+    return kf
+end
+
+# ## Initial Guess
+#
+# The length scale is longer than the input range and the noise variance is 40
+# times too high. The filter recovers the overall trend but treats the
+# oscillation as noise.
+
+θ_init  = (; σ² = 0.1, ℓ = 1.0, σn² = 1.0e-3)
+kf_init = fit(θ_init);
+
 # ## Loss Function
 #
-# We minimise the sum of squared innovations.
-# The parameters are stored in sigmoid-space; we convert them back to positive
-# values inside the loss.
+# `correct!` returns the log-likelihood of each measurement given all previous
+# data. The loss is their negative sum. Unlike a squared prediction error, the
+# likelihood also penalises a noise variance that is too large or too small, which
+# makes ``\sigma_n^2`` identifiable.
+#
+# The optimiser works on unconstrained parameters. `exp` maps them to positive
+# hyperparameters, and a small floor keeps the noise away from zero.
 
-function loss_function(θ_raw, p)
-    (; ϑ, us, ys) = p
-    θ  = sigmoid.(θ_raw)
-    kf = build_kf(θ, ϑ)
+to_θ(x) = (; σ² = exp(x[1]), ℓ = exp(x[2]), σn² = 1.0e-8 + exp(x[3]))
+to_x(θ) = log.([θ.σ², θ.ℓ, θ.σn²])
 
-    cost = zero(eltype(θ_raw))
-    for (u, y) in zip(us, ys)
-        ll, e = correct!(kf, u, y, kf.p)
+function loss(x, p)
+    kf   = build_kf(to_θ(x))
+    cost = zero(eltype(x))
+    for (u, y) in zip(p.us, p.ys)
+        ll, _ = correct!(kf, u, y, kf.p)
         predict!(kf, u)
-        cost += dot(e, e)
+        cost -= ll
     end
     return cost
 end
 
-# ## Optimisation Setup
+# ## Optimisation
 #
-# Initial hyperparameters (in positive space → map to unconstrained space):
+# LBFGS with a backtracking line search. The callback prints the loss every five
+# iterations.
 
-ϑ  = (; n_basis = 20, mean = 0.0)
-θ0 = ComponentVector(σ = 0.2, ℓ = 0.8, R2 = 0.01)
-θ0_raw = inv_sigmoid.(θ0)
-
-p = (; ϑ, us, ys)
-
-adtype = AutoForwardDiff()
-optf   = OptimizationFunction(loss_function, adtype)
-prob   = OptimizationProblem(optf, θ0_raw, p)
-
-# Run LBFGS with backtracking line search:
-alg = LBFGS(linesearch = LineSearches.BackTracking())
-sol = solve(prob, alg; reltol = 1e-4, show_trace = true)
-
-θ_opt = sigmoid.(sol.u)
-@info "Optimal hyperparameters" σ=θ_opt.σ  ℓ=θ_opt.ℓ  R2=θ_opt.R2
-
-# ## Retrain with Optimal Parameters
-
-kf_opt = build_kf(θ_opt, ϑ)
-
-for (u, y) in zip(us, ys)
-    kf_opt(u, y)
+iteration = Ref(0)
+function progress(state, l)
+    iteration[] += 1
+    iteration[] % 5 == 0 && println("iteration $(iteration[]):  -log L = $(round(l, digits = 2))")
+    return false
 end
 
-# ## Plot Results
+prob = OptimizationProblem(OptimizationFunction(loss, AutoForwardDiff()), to_x(θ_init), (; us, ys))
+sol  = solve(prob, LBFGS(linesearch = LineSearches.BackTracking()); reltol = 1.0e-6, callback = progress)
 
-b_plt  = collect(range(0.0, 0.9, length = 100))
-pred_μ = Float64[]
-pred_σ = Float64[]
+θ_opt = to_θ(sol.u)
+@info "Tuned hyperparameters" σ² = θ_opt.σ² ℓ = θ_opt.ℓ σn² = θ_opt.σn² true_noise_variance = 2.5e-5
 
-for u in b_plt
-    p = predict_kf(kf_opt, u)
-    push!(pred_μ, p.μ[1])
-    push!(pred_σ, sqrt(p.Σ[1, 1]))
+# ## Before and After
+#
+# [`predict_gp`](@ref) returns the posterior of the function, without sensor
+# noise.
+
+kf_opt = fit(θ_opt)
+b_plot = collect(range(0.0, 0.9, length = 200))
+
+fig = Figure(size = (800, 360))
+axs = [CairoMakie.Axis(fig[1, i]; xlabel = "b") for i in 1:2]
+
+for (ax, kf, title) in zip(axs, (kf_init, kf_opt), ("Initial guess", "Tuned"))
+    p = predict_gp(kf, b_plot, :rgp)
+    σ = sqrt.(abs.(diag(p.Σ)))
+    band!(ax, b_plot, p.μ .- 2σ, p.μ .+ 2σ; color = (:orange, 0.3), label = "Posterior μ ± 2σ")
+    lines!(ax, b_plot, f.(b_plot); label = "Ground truth")
+    lines!(ax, b_plot, p.μ; color = :orange, label = "Posterior μ ± 2σ")
+    scatter!(ax, us, first.(ys); color = :red, markersize = 5, label = "Training data")
+    ax.title = title
 end
 
-fig = Figure()
-ax  = CairoMakie.Axis(fig[1, 1]; title = "RGP with tuned hyperparameters")
-
-lines!(ax, b_plt, f.(b_plt);   label = "Ground truth")
-lines!(ax, b_plt, pred_μ;      color = :orange, label = "Posterior mean")
-band!(ax,  b_plt,
-      pred_μ .+ 2 .* pred_σ,
-      pred_μ .- 2 .* pred_σ;
-      color = (:orange, 0.3), label = "±2σ")
-scatter!(ax, us, [y[1] for y in ys]; color = :red, label = "Training data")
-
-ylims!(ax, 0.05, 0.35)
-axislegend(ax; position = :rb)
+axs[1].ylabel = "f(b)"
+xlims!.(axs, Ref(extrema(b_plot)))
+linkyaxes!(axs...)
+ylims!(axs[1], 0.0, 0.4)
+axislegend(axs[2]; position = :rb, merge = true)
 fig
 
-# !!! tip
-#     For a log-likelihood loss (MLE), replace the squared-error accumulation
-#     with `cost -= ll` where `ll` is the log-likelihood returned by
-#     `correct!`.
-#
-#     To tune the number of basis points as well, add it to `ϑ` and rebuild
-#     `b0` accordingly — though `n_basis` is discrete and cannot be
-#     differentiated.
+# The initial guess captures the trend but smooths out the oscillation. After
+# tuning, the estimated noise variance is close to the true value of 2.5e-5, the
+# posterior mean follows the data, and the band widens only outside the training
+# range, ``0.1 \lesssim b \lesssim 0.77``.

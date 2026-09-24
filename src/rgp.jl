@@ -25,14 +25,24 @@ end
 """
     struct RGP{bT, mT, BT, RT, cT}
 
+Recursive Gaussian process [1]: a GP prior represented by its values at the basis
+points `b0`. The values at `b0` are the state of a Kalman filter, with prior mean
+``\\mu_0 = m(b_0)`` and covariance ``\\Sigma_0 = K_{b_0 b_0} + \\varepsilon I``. See
+[Mathematical Background](@ref) for the derivation.
+
 # Fields
 - `gp`: The underlying `AbstractGPs.GP` object.
 - `b0`: The basis points (input locations) defining the reference distribution.
 - `μ0`: Initial mean vector at `b0`.
-- `Σ0`: Initial covariance matrix at `b0`.
-- `Σ0⁻¹`: Pre-computed inverse of `Σ0` (used for calculating the Kalman Gain/Projection matrix).
-- `R1`: Process noise matrix (initialized to zeros).
+- `Σ0`: Initial covariance matrix at `b0`, including the jitter ``\\varepsilon``.
+- `Σ0⁻¹`: Pre-computed inverse of `Σ0`, used for the interpolation weights ``H(u)``.
+- `R1`: Process noise matrix (initialized to zeros, i.e. a function constant in time).
 - `cache`: A `NamedTuple` containing `DiffCache` arrays (from `PreallocationTools.jl`).
+
+# References
+[1] M. F. Huber, "Recursive Gaussian process: On-line regression and learning,"
+Pattern Recognition Letters, vol. 45, pp. 85-91, 2014,
+doi: [10.1016/j.patrec.2014.03.004](https://doi.org/10.1016/j.patrec.2014.03.004)
 """
 struct RGP{bT, mT, BT, RT, cT}
     gp::GP
@@ -93,15 +103,14 @@ end
 """
     measurement_gp(rgp::RGP, g::AbstractArray, b::Real)
 
-Calculate the conditional mean of the Gaussian Process at a new point `b`.
-See [1] for a detailed description on recursive GPs.
+Mean of the function at input `b`, given the values `g` at the basis points:
 
 ```math
-\\mu_{post} = m(b) + k(b, b_0) \\Sigma_0^{-1} (g - \\mu_0)
+\\mathbb{E}[f(b) \\mid g] = m(b) + H(b)\\,(g - \\mu_0), \\qquad H(b) = K_{b b_0}\\,\\Sigma_0^{-1}
 ```
 
-[1] - M. F. Huber, "Recursive Gaussian process: On-line regression and learning,"
-Pattern Recognition Letters, 2014, doi: 10.1016/j.patrec.2014.03.004
+This is the measurement function of an RGP observation. See
+[Function values from the basis values](@ref) in the Mathematical Background.
 """
 function measurement_gp(rgp::RGP, g::AbstractArray, b::Real)
     (; gp, b0, μ0, Σ0⁻¹, cache) = rgp
@@ -125,16 +134,15 @@ end
 """
     uncertainty_gp(rgp::RGP, b::Real)
 
-Calculates the conditional variance (uncertainty) of the Gaussian Process at a point `b`.
-This represents uncertainty at `b` conditioned on the basis points `b0`.
-See [1] for a detailed description on recursive GPs.
+Residual variance of the function at input `b`, given the values at the basis points:
 
 ```math
-    \\sigma^2_{post} = k(b, b) - k(b, b_0) \\Sigma_0^{-1} k(b_0, b)
+r(b) = k(b, b) - H(b)\\,K_{b_0 b}
 ```
 
-[1] - M. F. Huber, "Recursive Gaussian process: On-line regression and learning,"
-Pattern Recognition Letters, 2014, doi: 10.1016/j.patrec.2014.03.004
+It is zero at the basis points and grows between them. Add it to the sensor noise
+variance to obtain the measurement noise ``R_2`` of an RGP observation. See
+[Observation model](@ref) in the Mathematical Background.
 """
 function uncertainty_gp(rgp::RGP, b::Real)
     (; gp, b0, Σ0⁻¹, cache) = rgp

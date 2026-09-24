@@ -1,63 +1,71 @@
 # RecursiveGPs.jl
 
-**RecursiveGPs.jl** implements Recursive Gaussian Process (RGP) regression
-([Huber 2013](https://doi.org/10.1109/ICASSP.2013.6638281),
-[Huber 2014](https://doi.org/10.1016/j.patrec.2014.03.004)) with seamless
-integration into [LowLevelParticleFilters.jl](https://github.com/baggepinnen/LowLevelParticleFilters.jl)'s
-`ExtendedKalmanFilter`.
+RecursiveGPs.jl implements recursive Gaussian process (RGP) regression
+[(Huber, 2014)](https://doi.org/10.1016/j.patrec.2014.03.004) for learning unknown
+functions online. The package depends on
+[AbstractGPs.jl](https://github.com/JuliaGaussianProcesses/AbstractGPs.jl) for kernel
+definitions and
+[LowLevelParticleFilters.jl](https://github.com/baggepinnen/LowLevelParticleFilters.jl)
+for the Kalman Filter backend.
 
-A Recursive GP represents a function as a Gaussian distribution over values at
-a fixed set of *basis points*. This distribution acts as the Kalman Filter
-state, enabling online, sequential updates as new observations arrive — with no
-matrix inversion at inference time.
+An RGP approximates a Gaussian process by its values at a fixed set of basis points.
+These values form the state of a Kalman filter, which is updated with each
+observation at a constant cost. Past observations are not stored, and the posterior
+mean and variance of the function are available at every step.
 
----
+The GP state can be augmented with the states of a physical model. An extended Kalman
+filter then estimates the model states and an unknown function in the model, for
+example a friction law or the open-circuit voltage curve of a battery, from the same
+measurements.
 
 ## Installation
 
+RecursiveGPs.jl is not yet registered. Install it from GitHub:
+
 ```julia
 using Pkg
-Pkg.add("RecursiveGPs")
+Pkg.add(url = "https://github.com/martincornejo/RecursiveGPs.jl")
 ```
 
-Or from the Julia REPL:
+## Example
 
-```
-] add RecursiveGPs
-```
-
----
-
-## Quick Start
+Learn a function from noisy samples, one sample at a time:
 
 ```julia
 using RecursiveGPs, AbstractGPs, StaticArrays
 
-# 1. Define a kernel and a set of basis points
-kernel = 0.01 * with_lengthscale(SEKernel(), 0.3)
-b0     = collect(0:0.05:1)
+# Noisy samples of a function to learn
+f(u) = 0.5u + 0.1 * sinpi(2u)
+us = 0.1 .+ 0.7 .* rand(100)
+ys = [SA[f(u) + 0.005 * randn()] for u in us]
 
-# 2. Build an RGP and wrap it in a Kalman Filter
-rgp = RGP(kernel, b0)
-kf  = ExtendedKalmanFilter(rgp)
+# GP prior, represented at 21 basis points
+rgp = RGP(0.01 * with_lengthscale(SEKernel(), 0.3), collect(range(0, 1, length = 21)))
 
-# 3. Train online (one observation at a time)
-for (u, y) in zip(inputs, outputs)
-    kf(u, SA[y])
+# Kalman filter whose state is the GP at the basis points
+dynamics(x, u, p, t) = x
+measurement(x, u, p, t) = SA[measurement_gp(p.f, x, u)]
+R2(x, u, p, t) = @SMatrix [uncertainty_gp(p.f, u) + 0.005^2]
+kf = ExtendedKalmanFilter((; f = rgp), dynamics, measurement, R2)
+
+# Learn online
+for (u, y) in zip(us, ys)
+    kf(u, y)
 end
 
-# 4. Predict
-b_test = collect(range(0.0, 1.0, 200))
-pred   = predict_gp(kf, b_test)   # returns (; μ, Σ)
+# Posterior mean and covariance of f
+post = predict_gp(kf, range(0, 1, length = 200), :f)
 ```
 
----
+`R2` is the sum of the residual variance of the GP between basis points and the
+sensor noise variance. The same constructor accepts further components, such as
+physical states, together with arbitrary dynamics and measurement functions.
 
-## Documentation Overview
+## Contents
 
 | Section | Description |
 |---------|-------------|
-| [Getting Started](@ref) | Step-by-step installation and minimal working example |
-| [Mathematical Background](@ref) | RGP theory, key equations, state-space interpretation |
-| [Tutorials](@ref "Basic RGP with Kalman Filter") | Worked examples with full code |
-| [API Reference](@ref) | Complete docstrings for all exported symbols |
+| [Getting Started](@ref) | Installation and a first example with figure, step by step |
+| [Mathematical Background](@ref) | GP regression, the recursive GP, and coupling to physical models |
+| [Tutorials](@ref "Multi-Component RGPs") | Worked examples with executed code and figures |
+| [API Reference](@ref) | Docstrings of all exported functions |

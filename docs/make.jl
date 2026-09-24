@@ -1,26 +1,32 @@
 using Documenter, RecursiveGPs, Literate
 import LowLevelParticleFilters  # needed so @docs can resolve LLPF.state / LLPF.covariance
 
+# Raster output keeps the built pages under Documenter's size threshold; vector
+# figures with thousands of points blow past it.
+using CairoMakie
+CairoMakie.activate!(type = "png")
+
 # ---------------------------------------------------------------------------
-# Generate tutorial markdown files directly from the example scripts in
-# examples/.  The output .md files land in docs/src/tutorials/ at build time
-# and are .gitignore'd.
+# Generate tutorial markdown files from the example scripts in examples/.
+# The output .md files land in docs/src/tutorials/ at build time and are
+# .gitignore'd.
 #
-# CommonMarkFlavor produces plain ```julia blocks (not @example blocks), so
-# Documenter treats them as static code — no extra package deps needed in docs/.
+# DocumenterFlavor produces @example blocks, which Documenter executes, so the
+# figures and printed output appear in the docs and a broken example fails the
+# build. This requires the example dependencies in docs/Project.toml.
 # ---------------------------------------------------------------------------
 examples_dir = joinpath(@__DIR__, "..", "examples")
 tutorial_out = joinpath(@__DIR__, "src", "tutorials")
 
-for (jl_file, _) in [
-        "basic_rgp.jl" => "basic_rgp.md",
-        "combined_rgp.jl" => "combined_rgp.md",
-        "hyperparameter_tuning.jl" => "hyperparameter_tuning.md",
+for jl_file in [
+        "combined_rgp.jl",
+        "hyperparameter_tuning.jl",
+        "friction_learning.jl",
     ]
     Literate.markdown(
         joinpath(examples_dir, jl_file),
         tutorial_out;
-        flavor = Literate.CommonMarkFlavor(),
+        flavor = Literate.DocumenterFlavor(),
     )
 end
 
@@ -34,9 +40,9 @@ makedocs(
         "Getting Started" => "getting_started.md",
         "Mathematical Background" => "math_background.md",
         "Tutorials" => [
-            "Basic RGP" => "tutorials/basic_rgp.md",
             "Multi-Component RGPs" => "tutorials/combined_rgp.md",
             "Hyperparameter Tuning" => "tutorials/hyperparameter_tuning.md",
+            "Learning Missing Physics" => "tutorials/friction_learning.md",
         ],
         "API Reference" => "api.md",
     ],

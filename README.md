@@ -1,15 +1,79 @@
-# Recursive Gaussian Procceses/Usage
-The package implements (cite) and allows the instantiation of Kalman Filter (KF) objects from LowLevelParticleFilters.jl through the definition of Recursive Gaussian Processes (RGPs) and named tuples with an initial mean $\mu0$ and covariance matrix $\Sigma$. 
-Hyp-paramterer tuning can be done by using OptimizationOptimJL package.
-For more information see examples/ folder.
+# RecursiveGPs.jl
 
-# Setup
+[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://martincornejo.github.io/RecursiveGPs.jl/dev/)
+[![CI](https://github.com/martincornejo/RecursiveGPs.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/martincornejo/RecursiveGPs.jl/actions/workflows/CI.yml)
 
+RecursiveGPs.jl implements recursive Gaussian process (RGP) regression
+[(Huber, 2014)](https://doi.org/10.1016/j.patrec.2014.03.004) for learning unknown
+functions online. The package depends on
+[AbstractGPs.jl](https://github.com/JuliaGaussianProcesses/AbstractGPs.jl) for kernel
+definitions and
+[LowLevelParticleFilters.jl](https://github.com/baggepinnen/LowLevelParticleFilters.jl)
+for the Kalman Filter backend.
 
-# Example
-We will use RecursiveGPs package for aproximating a function f(b) = 0.5 * b + 0.1 * sinpi(b * 2), first 100 samples are drawn from a , and then a noise $\sigma = 5e-3$ is added. The RGP is set up with an mean zero and an SEKernel with parameter $\sigma = 0.02, l = 0.1$. In the figures we show the training time, allocations and real time animation of the fitting.
+An RGP approximates a Gaussian process by its values at a fixed set of basis points.
+These values form the state of a Kalman filter, which is updated with each
+observation at a constant cost. Past observations are not stored, and the posterior
+mean and variance of the function are available at every step.
 
-![Demo](animation.gif)
+The GP state can be augmented with the states of a physical model. An extended Kalman
+filter then estimates the model states and an unknown function in the model, for
+example a friction law or the open-circuit voltage curve of a battery, from the same
+measurements.
 
+## Installation
 
+RecursiveGPs.jl is not yet registered. Install it from GitHub:
 
+```julia
+using Pkg
+Pkg.add(url = "https://github.com/martincornejo/RecursiveGPs.jl")
+```
+
+## Example
+
+Learn a function from noisy samples, one sample at a time:
+
+```julia
+using RecursiveGPs, AbstractGPs, StaticArrays
+
+# Noisy samples of a function to learn
+f(u) = 0.5u + 0.1 * sinpi(2u)
+us = 0.1 .+ 0.7 .* rand(100)
+ys = [SA[f(u) + 0.005 * randn()] for u in us]
+
+# GP prior, represented at 21 basis points
+rgp = RGP(0.01 * with_lengthscale(SEKernel(), 0.3), collect(range(0, 1, length = 21)))
+
+# Kalman filter whose state is the GP at the basis points
+dynamics(x, u, p, t) = x
+measurement(x, u, p, t) = SA[measurement_gp(p.f, x, u)]
+R2(x, u, p, t) = @SMatrix [uncertainty_gp(p.f, u) + 0.005^2]
+kf = ExtendedKalmanFilter((; f = rgp), dynamics, measurement, R2)
+
+# Learn online
+for (u, y) in zip(us, ys)
+    kf(u, y)
+end
+
+# Posterior mean and covariance of f
+post = predict_gp(kf, range(0, 1, length = 200), :f)
+```
+
+`R2` is the sum of the residual variance of the GP between basis points and the
+sensor noise variance. The same constructor accepts further components, such as
+physical states, together with arbitrary dynamics and measurement functions.
+
+## Documentation
+
+The [documentation](https://martincornejo.github.io/RecursiveGPs.jl/dev/) contains
+a [theoretical introduction](https://martincornejo.github.io/RecursiveGPs.jl/dev/math_background/)
+to GP regression and the recursive GP, and the following tutorials:
+
+- [Multi-Component RGPs](https://martincornejo.github.io/RecursiveGPs.jl/dev/tutorials/combined_rgp/): several functions in one measurement
+- [Hyperparameter Tuning](https://martincornejo.github.io/RecursiveGPs.jl/dev/tutorials/hyperparameter_tuning/): maximum likelihood with automatic differentiation
+- [Learning Missing Physics](https://martincornejo.github.io/RecursiveGPs.jl/dev/tutorials/friction_learning/): an unknown friction law in an equation of motion
+
+## License
+
+MIT, see [LICENSE](LICENSE).
