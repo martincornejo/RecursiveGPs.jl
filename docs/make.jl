@@ -22,6 +22,7 @@ for jl_file in [
         "basic_rgp.jl",
         "combined_rgp.jl",
         "hyperparameter_tuning.jl",
+        "friction_learning.jl",
     ]
     Literate.markdown(
         joinpath(examples_dir, jl_file),
@@ -43,6 +44,7 @@ makedocs(
             "Basic RGP" => "tutorials/basic_rgp.md",
             "Multi-Component RGPs" => "tutorials/combined_rgp.md",
             "Hyperparameter Tuning" => "tutorials/hyperparameter_tuning.md",
+            "Learning Missing Physics" => "tutorials/friction_learning.md",
         ],
         "API Reference" => "api.md",
     ],
