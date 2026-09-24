@@ -77,10 +77,10 @@ kf_init = fit(θ_init);
 
 # ## Loss Function
 #
-# `correct!` returns the log-likelihood of each measurement given all data before
-# it. Their negative sum is the loss. Besides rewarding accurate predictions, it
-# penalises a noise level that is too large or too small, which is what lets it
-# identify `R2`.
+# `correct!` returns the log-likelihood of each measurement given all previous
+# data. The loss is their negative sum. Unlike a squared prediction error, the
+# likelihood also penalises a noise variance that is too large or too small, which
+# makes `R2` identifiable.
 #
 # The optimiser works on unconstrained parameters. `exp` maps them to positive
 # hyperparameters, and a small floor keeps the noise away from zero.
@@ -119,8 +119,8 @@ sol  = solve(prob, LBFGS(linesearch = LineSearches.BackTracking()); reltol = 1.0
 
 # ## Before and After
 #
-# [`predict_gp`](@ref) gives the posterior over the function itself, so the band
-# shows what the model knows about ``f``.
+# [`predict_gp`](@ref) returns the posterior of the function, without sensor
+# noise.
 
 kf_opt = fit(θ_opt)
 b_plot = collect(range(0.0, 0.9, length = 200))
@@ -145,7 +145,7 @@ ylims!(axs[1], 0.0, 0.4)
 axislegend(axs[2]; position = :rb, merge = true)
 fig
 
-# The initial guess follows the trend and smooths out the oscillation. After
-# tuning, the noise variance is close to the true 2.5e-5, the mean follows the
-# data, and the band widens only outside the training range,
-# ``0.1 \lesssim b \lesssim 0.77``.
+# The initial guess captures the trend but smooths out the oscillation. After
+# tuning, the estimated noise variance is close to the true value of 2.5e-5, the
+# posterior mean follows the data, and the band widens only outside the training
+# range, ``0.1 \lesssim b \lesssim 0.77``.
