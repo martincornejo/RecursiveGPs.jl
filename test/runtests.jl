@@ -44,6 +44,44 @@ using LineSearches
         @test rgp_A.Σ0⁻¹ == rgp_B.Σ0⁻¹
     end
 
+    @testset "KernelSum" begin
+        # `cov!` has a KernelSum specialization; it must not be ambiguous with the
+        # generic method, and must agree with it numerically.
+        ksum = 0.02 * with_lengthscale(SEKernel(), 0.1) + 0.05 * with_lengthscale(SEKernel(), 0.5)
+        rgp_s = RGP(ksum, b0)
+        g_obs = rand(rng, length(b0))
+        b_query = 0.42
+
+        @test_nowarn measurement_gp(rgp_s, g_obs, b_query)
+        @test_nowarn uncertainty_gp(rgp_s, b_query)
+
+        expected = ksum.(b0, b_query)' * rgp_s.Σ0⁻¹ * (g_obs - rgp_s.μ0)
+        @test measurement_gp(rgp_s, g_obs, b_query)[1] ≈ expected atol = 1.0e-8
+        @test uncertainty_gp(rgp_s, b_query)[1] ≥ 0
+
+        # must stay differentiable w.r.t. the query point (needed for non-identity dynamics)
+        @test_nowarn ForwardDiff.derivative(b -> measurement_gp(rgp_s, g_obs, b)[1], b_query)
+    end
+
+    @testset "Differentiable w.r.t. kernel hyperparameters" begin
+        # Σ0⁻¹ carries Duals here; the cache element type must still be concrete
+        g_obs = rand(rng, length(b0))
+        # larger jitter keeps Σ0 well conditioned, so finite differences are a reliable reference
+        make_rgp = θ -> RGP(θ[1] * with_lengthscale(SEKernel(), θ[2]), b0, 1.0e-3)
+        output = θ -> measurement_gp(make_rgp(θ), g_obs, 0.42)[1] + uncertainty_gp(make_rgp(θ), 0.42)[1]
+        θ = [0.02, 0.3]
+
+        grad = ForwardDiff.gradient(output, θ)
+        δ = i -> 1.0e-4 * θ[i] .* (eachindex(θ) .== i)
+        fdiff = [(output(θ .+ δ(i)) - output(θ .- δ(i))) / (2 * 1.0e-4 * θ[i]) for i in eachindex(θ)]
+        @test all(isfinite, grad)
+        @test grad ≈ fdiff rtol = 1.0e-6
+
+        # hyperparameters and query point differentiated together
+        slope = θ -> ForwardDiff.derivative(b -> measurement_gp(make_rgp(θ), g_obs, b)[1], 0.42)
+        @test all(isfinite, ForwardDiff.gradient(slope, θ))
+    end
+
     @testset "Correctness: measurement_gp" begin
         g_obs = rand(rng, length(b0))
         b_query = 0.5
