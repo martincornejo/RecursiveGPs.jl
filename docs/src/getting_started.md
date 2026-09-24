@@ -23,7 +23,7 @@ scalar function from noisy samples, one sample at a time, and the learned functi
 is then evaluated at arbitrary inputs together with its uncertainty.
 
 ```@example gs
-using RecursiveGPs     # RGP, ExtendedKalmanFilter, measurement_gp, uncertainty_gp, predict_gp
+using RecursiveGPs     # RGP, ExtendedKalmanFilter, predict_gp
 using AbstractGPs      # kernels
 using StaticArrays     # static vectors and matrices for the filter
 using LinearAlgebra    # diag
@@ -70,19 +70,16 @@ A mean function can be passed as the first argument, for example
 The filter state is the vector of GP values at the basis points, initialised with the
 prior mean and covariance. The function is constant in time, so the dynamics are the
 identity. The measurement is the GP mean at the input, and the measurement noise is
-the residual variance of the GP plus the sensor noise variance:
+the residual variance of the GP plus the sensor noise variance `σn^2`:
 
 ```@example gs
-dynamics(x, u, p, t) = x
-measurement(x, u, p, t) = SA[measurement_gp(p.f, x, u)]
-R2(x, u, p, t) = @SMatrix [uncertainty_gp(p.f, u) + σn^2]
-
-kf = ExtendedKalmanFilter((; f = rgp), dynamics, measurement, R2)
+kf = ExtendedKalmanFilter(rgp; σn)
 nothing # hide
 ```
 
-The named tuple `(; f = rgp)` names the component `f`. The component is available as
-`p.f` inside the model functions and selects it in [`predict_gp`](@ref).
+Models with several GPs or with physical states use the multi-component constructor,
+which takes the dynamics and measurement functions explicitly. The
+[tutorials](@ref "Multi-Component RGPs") show how.
 
 ### 4. Learning
 
@@ -101,7 +98,7 @@ query points:
 
 ```@example gs
 b = collect(range(0, 1, length = 200))
-post = predict_gp(kf, b, :f)
+post = predict_gp(kf, b)
 
 μ = post.μ               # posterior mean
 σ = sqrt.(diag(post.Σ))  # posterior standard deviation

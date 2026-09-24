@@ -40,13 +40,10 @@ us = 0.1 .+ 0.7 .* rand(100)
 ys = [SA[f(u) + 0.005 * randn()] for u in us]
 
 # GP prior, represented at 21 basis points
-rgp = RGP(0.01 * with_lengthscale(SEKernel(), 0.3), collect(range(0, 1, length = 21)))
+rgp = RGP(0.1 * with_lengthscale(SEKernel(), 0.4), collect(range(0, 1, length = 21)))
 
 # Kalman filter whose state is the GP at the basis points
-dynamics(x, u, p, t) = x
-measurement(x, u, p, t) = SA[measurement_gp(p.f, x, u)]
-R2(x, u, p, t) = @SMatrix [uncertainty_gp(p.f, u) + 0.005^2]
-kf = ExtendedKalmanFilter((; f = rgp), dynamics, measurement, R2)
+kf = ExtendedKalmanFilter(rgp; σn = 0.005)
 
 # Learn online
 for (u, y) in zip(us, ys)
@@ -54,12 +51,12 @@ for (u, y) in zip(us, ys)
 end
 
 # Posterior mean and covariance of f
-post = predict_gp(kf, range(0, 1, length = 200), :f)
+post = predict_gp(kf, range(0, 1, length = 200))
 ```
 
-`R2` is the sum of the residual variance of the GP between basis points and the
-sensor noise variance. The same constructor accepts further components, such as
-physical states, together with arbitrary dynamics and measurement functions.
+Models with several GPs or with physical states use the multi-component constructor,
+`ExtendedKalmanFilter(components, dynamics, measurement, R2)`, with arbitrary
+dynamics and measurement functions.
 
 ## Contents
 

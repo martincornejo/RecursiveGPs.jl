@@ -290,11 +290,7 @@ system.
 | ``\mu^*``, ``\Sigma^*`` | [`predict_gp`](@ref) |
 | Predicted measurement and ``S_t`` | [`predict_kf`](@ref) |
 | ``R_1``, ``R_2`` | `R1`, `R2` of the `ExtendedKalmanFilter` |
-
-!!! note
-    The single-RGP constructor `ExtendedKalmanFilter(rgp)` sets ``R_2 = r(u_t)`` and
-    omits the sensor noise. For noisy data, build the filter with the multi-component
-    constructor and return `uncertainty_gp(rgp, u) + σn^2` from `R2`.
+| ``\sigma_n`` | keyword `σn` of `ExtendedKalmanFilter(rgp; σn)` |
 
 ## References
 
