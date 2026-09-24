@@ -14,8 +14,8 @@ function cov!(c::AbstractVector, gp::GP, x::AbstractVector, y::Real)
     return
 end
 
-function cov!(c::AbstractVector, gp::GP{<:Any, <:KernelSum}, x::AbstractVector, y)
-    fill!(c, 0.0)
+function cov!(c::AbstractVector, gp::GP{<:AbstractGPs.MeanFunction, <:KernelSum}, x::AbstractVector, y::Real)
+    fill!(c, zero(eltype(c)))
     for kernel in gp.kernel.kernels
         @. c += kernel(x, y)
     end
@@ -105,7 +105,7 @@ Pattern Recognition Letters, 2014, doi: 10.1016/j.patrec.2014.03.004
 """
 function measurement_gp(rgp::RGP, g::AbstractArray, b::Real)
     (; gp, b0, μ0, Σ0⁻¹, cache) = rgp
-    T = eltype(Σ0⁻¹) <: ForwardDiff.Dual ? ForwardDiff.Dual : typeof(b)
+    T = promote_type(eltype(Σ0⁻¹), typeof(b))
     k = get_tmp(cache.k, T)
     H = get_tmp(cache.H, T)
     Δg = get_tmp(cache.Δg, g)
@@ -138,7 +138,7 @@ Pattern Recognition Letters, 2014, doi: 10.1016/j.patrec.2014.03.004
 """
 function uncertainty_gp(rgp::RGP, b::Real)
     (; gp, b0, Σ0⁻¹, cache) = rgp
-    T = eltype(Σ0⁻¹) <: ForwardDiff.Dual ? ForwardDiff.Dual : typeof(b)
+    T = promote_type(eltype(Σ0⁻¹), typeof(b))
     k = get_tmp(cache.k, T)
     H = get_tmp(cache.H, T)
     k⁻ = get_tmp(cache.k⁻, T)
