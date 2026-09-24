@@ -125,7 +125,7 @@ sol  = solve(prob, LBFGS(linesearch = LineSearches.BackTracking()); reltol = 1.0
 kf_opt = fit(θ_opt)
 b_plot = collect(range(0.0, 0.9, length = 200))
 
-fig = Figure(size = (1000, 380))
+fig = Figure(size = (800, 360))
 axs = [CairoMakie.Axis(fig[1, i]; xlabel = "b") for i in 1:2]
 
 for (ax, kf, title) in zip(axs, (kf_init, kf_opt), ("Initial guess", "Tuned"))
@@ -139,6 +139,7 @@ for (ax, kf, title) in zip(axs, (kf_init, kf_opt), ("Initial guess", "Tuned"))
 end
 
 axs[1].ylabel = "f(b)"
+xlims!.(axs, Ref(extrema(b_plot)))
 linkyaxes!(axs...)
 ylims!(axs[1], 0.0, 0.4)
 axislegend(axs[2]; position = :rb, merge = true)

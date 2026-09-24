@@ -99,8 +99,8 @@ end
 
 # ## Plot Output vs Ground Truth
 
-fig1 = Figure()
-ax1  = CairoMakie.Axis(fig1[1, 1]; title = "Combined RGP output")
+fig1 = Figure(size = (800, 450))
+ax1  = CairoMakie.Axis(fig1[1, 1]; title = "Combined RGP output", xlabel = "t", ylabel = "y")
 
 lines!(ax1,  ts, gt;     label = "Ground truth")
 lines!(ax1,  ts, pred_μ; color = :orange, label = "Posterior mean")
@@ -110,6 +110,7 @@ band!(ax1,   ts,
       color = (:orange, 0.3))
 scatter!(ax1, ts, gt; color = :red, markersize = 4, label = "Training data")
 
+xlims!(ax1, extrema(ts))
 axislegend(ax1)
 fig1
 
@@ -125,10 +126,11 @@ pred_b = predict_gp(kf, b_plot, :b)
 σ_a    = sqrt.(diag(pred_a.Σ))
 σ_b    = sqrt.(diag(pred_b.Σ))
 
-fig2 = Figure()
-axs  = [CairoMakie.Axis(fig2[i, 1]) for i in 1:2]
+fig2 = Figure(size = (800, 500))
+axs  = [CairoMakie.Axis(fig2[i, 1]; xlabel = "b") for i in 1:2]
 
 axs[1].title = "Component a:  f₁(b) = exp(b)"
+axs[1].ylabel = "f₁(b)"
 lines!(axs[1], b_plot, f1.(b_plot);   label = "Ground truth")
 lines!(axs[1], b_plot, pred_a.μ;      color = :orange, label = "Posterior mean")
 band!(axs[1],  b_plot,
@@ -138,6 +140,7 @@ band!(axs[1],  b_plot,
 scatter!(axs[1], u1, f1.(u1); color = :red, label = "Training inputs")
 
 axs[2].title = "Component b:  f₂(b) = 0.1 + 0.5b + 0.1sin(2πb)"
+axs[2].ylabel = "f₂(b)"
 lines!(axs[2], b_plot, f2.(b_plot);   label = "Ground truth")
 lines!(axs[2], b_plot, pred_b.μ;      color = :orange, label = "Posterior mean")
 band!(axs[2],  b_plot,
@@ -146,6 +149,7 @@ band!(axs[2],  b_plot,
       color = (:orange, 0.3))
 scatter!(axs[2], u1, f2.(u1); color = :red, label = "Training inputs")
 
+xlims!.(axs, Ref(extrema(b_plot)))
 axislegend.(axs; position = :rb)
 fig2
 

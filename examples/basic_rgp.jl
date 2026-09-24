@@ -71,17 +71,18 @@ end
 #
 # The orange band shows ±2σ posterior uncertainty.
 
-fig = Figure()
-ax  = CairoMakie.Axis(fig[1, 1]; title = "RGP fit: f(b) = 0.5b + 0.1sin(2πb)")
+fig = Figure(size = (800, 450))
+ax  = CairoMakie.Axis(fig[1, 1]; title = "RGP fit: f(b) = 0.5b + 0.1sin(2πb)", xlabel = "b", ylabel = "f(b)")
 
 lines!(ax, b_test, f.(b_test);   label = "Ground truth")
-lines!(ax, b_test, pred_μ;       color = :orange, label = "Posterior mean")
+lines!(ax, b_test, pred_μ;       color = :orange, label = "Posterior μ ± 2σ")
 band!(ax,  b_test,
       pred_μ .+ 2 .* pred_σ,
       pred_μ .- 2 .* pred_σ;
-      color = (:orange, 0.3), label = "±2σ")
+      color = (:orange, 0.3), label = "Posterior μ ± 2σ")
 scatter!(ax, us, [y[1] for y in ys]; color = :red, label = "Training data")
 
+xlims!(ax, extrema(b_test))
 ylims!(ax, 0.05, 0.35)
 axislegend(ax; position = :rb, merge = true)
 fig
