@@ -115,6 +115,33 @@ using LineSearches
         end
     end
 
+    @testset "Sensor noise keyword" begin
+        σn = 5.0e-3
+        kf_0 = ExtendedKalmanFilter(rgp1)
+        kf_n = ExtendedKalmanFilter(rgp1; σn)
+
+        # the keyword adds σn² to the measurement noise
+        u = 0.42
+        @test only(predict_kf(kf_n, u).Σ) ≈ only(predict_kf(kf_0, u).Σ) + σn^2
+
+        # the default reproduces the noise-free measurement model
+        kf_default = ExtendedKalmanFilter(rgp1; σn = 0.0)
+        @test only(predict_kf(kf_default, u).Σ) == only(predict_kf(kf_0, u).Σ)
+
+        # same result as the multi-component constructor with the noise written out
+        dynamics(x, u, p, t) = x
+        measurement(x, u, p, t) = SA[measurement_gp(p.f, x, u)]
+        R2(x, u, p, t) = @SMatrix [uncertainty_gp(p.f, u) + σn^2]
+        kf_c = ExtendedKalmanFilter((; f = rgp1), dynamics, measurement, R2)
+
+        for (u, y) in zip(us, ys)
+            kf_n(u, y)
+            kf_c(u, y)
+        end
+        @test kf_n.x ≈ kf_c.x
+        @test kf_n.R ≈ kf_c.R
+    end
+
     kf = ExtendedKalmanFilter(rgp1)
     for (u, y) in zip(us, ys)
         kf(u, y)

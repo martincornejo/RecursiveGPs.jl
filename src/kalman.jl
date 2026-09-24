@@ -1,30 +1,28 @@
 """
-    ExtendedKalmanFilter(rgp::RGP; ny=1, nu=1, p=(;), kwargs...)
+    ExtendedKalmanFilter(rgp::RGP; σn=0.0, ny=1, nu=1, p=(;), kwargs...)
 
 Construct an `ExtendedKalmanFilter` for a single [`RGP`](@ref) model.
 
 The state is the GP function values at the basis points `b0`. Dynamics is set to
-identity, the measurement model uses [`measurement_gp`](@ref), and the measurement
-noise covariance uses [`uncertainty_gp`](@ref).
-
-!!! note
-    The measurement noise is the residual variance ``r(u)`` only and does not include
-    sensor noise. For noisy data, use the multi-component constructor and add the
-    sensor noise variance in `R2`.
+identity and the measurement model uses [`measurement_gp`](@ref). The measurement
+noise is the residual variance of the GP, [`uncertainty_gp`](@ref), plus the sensor
+noise variance `σn^2`.
 
 # Arguments
 - `rgp`: The [`RGP`](@ref) model.
+- `σn`: Standard deviation of the sensor noise. The default `0.0` treats the
+  observations as noise-free.
 - `ny`, `nu`: Output and input dimensions.
 - `p`: Additional parameters merged into the filter's parameter tuple.
 - `kwargs...`: Forwarded to the base `ExtendedKalmanFilter` constructor.
 """
-function ExtendedKalmanFilter(rgp::RGP; ny::Int = 1, nu::Int = 1, p::NamedTuple = (;), kwargs...)
+function ExtendedKalmanFilter(rgp::RGP; σn::Real = 0.0, ny::Int = 1, nu::Int = 1, p::NamedTuple = (;), kwargs...)
 
     dynamics(x, u, p, t) = x # identity
 
     measurement(x, u, p, t) = measurement_gp(p.rgp, x, u) |> SVector{ny}
 
-    R2(x, u, p, t) = uncertainty_gp(p.rgp, u) |> SMatrix{ny, ny}
+    R2(x, u, p, t) = uncertainty_gp(p.rgp, u) + σn^2 |> SMatrix{ny, ny}
 
     T = promote_type(eltype(rgp.μ0), eltype(rgp.Σ0), eltype(rgp.R1))
     μ0 = T.(rgp.μ0)
