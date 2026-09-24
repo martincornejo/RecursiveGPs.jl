@@ -1,21 +1,22 @@
 # RecursiveGPs.jl
 
-RecursiveGPs.jl learns unknown functions online with Gaussian processes, inside a
-Kalman filter. It implements the recursive Gaussian process (RGP) of
-[Huber (2014)](https://doi.org/10.1016/j.patrec.2014.03.004) on top of the filters in
-[LowLevelParticleFilters.jl](https://github.com/baggepinnen/LowLevelParticleFilters.jl),
-with kernels from [AbstractGPs.jl](https://github.com/JuliaGaussianProcesses/AbstractGPs.jl).
+RecursiveGPs.jl implements recursive Gaussian process (RGP) regression
+[(Huber, 2014)](https://doi.org/10.1016/j.patrec.2014.03.004) for learning unknown
+functions online. The package depends on
+[AbstractGPs.jl](https://github.com/JuliaGaussianProcesses/AbstractGPs.jl) for kernel
+definitions and
+[LowLevelParticleFilters.jl](https://github.com/baggepinnen/LowLevelParticleFilters.jl)
+for the Kalman Filter backend.
 
-An RGP represents a function by its values at a fixed set of basis points. These
-values are the state of a Kalman filter, so every new sample updates the function
-estimate at a constant cost, without storing past data. The result is a Gaussian
-posterior over the function: its mean is the estimate, and its variance shows where
-the data constrains the function and where it does not.
+An RGP approximates a Gaussian process by its values at a fixed set of basis points.
+These values form the state of a Kalman filter, which is updated with each
+observation at a constant cost. Past observations are not stored, and the posterior
+mean and variance of the function are available at every step.
 
-Because the function is an ordinary filter state, it can be combined with the
-physical states of a model. A single extended Kalman filter then estimates the states
-and learns an unknown term of the model, such as a friction law or a battery's
-open-circuit voltage curve, from the same measurements.
+The GP state can be augmented with the states of a physical model. An extended Kalman
+filter then estimates the model states and an unknown function in the model, for
+example a friction law or the open-circuit voltage curve of a battery, from the same
+measurements.
 
 ## Installation
 
@@ -56,9 +57,9 @@ end
 post = predict_gp(kf, range(0, 1, length = 200), :f)
 ```
 
-`R2` combines the GP's residual variance between basis points with the sensor noise.
-The same constructor accepts physical states next to the GP, with arbitrary dynamics
-and measurement functions.
+`R2` is the sum of the residual variance of the GP between basis points and the
+sensor noise variance. The same constructor accepts further components, such as
+physical states, together with arbitrary dynamics and measurement functions.
 
 ## Contents
 
