@@ -7,10 +7,10 @@
 # m\,\dot v = F_u(t) - F_f(v), \qquad F_f \text{ unknown}
 # ```
 #
-# An [`RGP`](@ref) represents ``F_f``. Its basis-point values are appended to the
-# state vector of an Extended Kalman Filter, so one pass over the data estimates
-# the velocity and the friction curve together. No optimiser is involved, and the
-# posterior covariance shows which velocities the data constrains.
+# An [`RGP`](@ref) represents ``F_f``. Its basis values are appended to the state
+# of an extended Kalman filter, which estimates the velocity and the friction curve
+# in a single pass over the data. The posterior covariance indicates for which
+# velocities the data determines the friction force.
 #
 # The setup is adapted from the
 # [ModelingToolkitNeuralNets friction tutorial](https://docs.sciml.ai/ModelingToolkitNeuralNets/dev/friction/),
@@ -145,14 +145,14 @@ snaps = Dict{Int, Any}()
     i in snap_steps && (snaps[i] = (copy(state(kf)), copy(covariance(kf))))
 end
 
-# ## What the model knows, as data arrives
+# ## Posterior during training
 #
-# The grey rug marks the velocities visited so far. Inside that range the
-# posterior follows the truth with a narrow band; outside it the mean returns to
-# the prior and the band widens.
+# The grey rug marks the velocities visited so far. Within this range the
+# posterior mean follows the true curve with a narrow band. Outside it, the
+# posterior remains at the prior.
 #
-# After 0.3 s the mass has covered the whole positive range and the fit there is
-# already accurate, while negative velocities are still at the prior.
+# After 0.3 s the positive velocity range has been covered and the fit there is
+# accurate. Negative velocities have not been visited yet and remain at the prior.
 
 vplot = collect(range(-16.0, 18.0, length = 300))
 seen = [vs[1:n] for n in snap_steps]
@@ -196,10 +196,9 @@ err = post.μ .- params.friction.(vtest)
 
 # ## Re-simulation with the learned term
 #
-# The posterior mean is inserted into the physical model, and the full 6 s are
-# simulated from the applied force alone. The frictionless model is the starting
-# point the RGP was added to. The error is measured on the held-out part,
-# ``t > 3`` s, which the filter has not seen.
+# The posterior mean is inserted into the equation of motion, and the full 6 s
+# are simulated from the applied force. The model without friction serves as a
+# baseline. The error is evaluated on the held-out interval ``t > 3`` s.
 
 ĝ = state(kf, :fric)
 f̂(v) = measurement_gp(rgp, ĝ, v)[1]
@@ -232,11 +231,10 @@ Legend(fig2[3, 1], axs[2]; orientation = :horizontal, framevisible = false)
 resize_to_layout!(fig2)
 fig2
 
-# The shaded interval is the training data. After it, the completed model
-# predicts the coast-down during the pause and the response once the force
-# resumes. The frictionless model keeps the velocity it had at 3 s.
+# The shaded interval marks the training data. Beyond it, the completed model
+# predicts the coast-down during the pause and the response after the force
+# resumes. The model without friction retains its velocity at 3 s.
 
 # !!! note "Validity range"
-#     The learned term is only usable inside the velocity range the experiment
-#     visited. Outside it the posterior returns to the prior and the band widens;
-#     the practical guide covers using that band as a validity check.
+#     The learned term is valid only within the velocity range visited by the
+#     experiment. Outside this range the posterior reverts to the prior.
