@@ -13,7 +13,8 @@
 # where ``f_1(b) = e^b`` and ``f_2(b) = 0.1 + 0.5b + 0.1\sin(2\pi b)``.
 # The input ``u_2`` is a scalar gain. Neither function is observed directly,
 # only their weighted sum. The two functions can be separated because ``u_2``
-# varies between measurements. The observations are noise-free.
+# varies between measurements. The measurements contain sensor noise with standard
+# deviation 0.01.
 
 using RecursiveGPs
 using AbstractGPs
@@ -35,8 +36,9 @@ ts  = collect(range(0, 100, n))
 u1  = 0.1 .+ rand(n) / 1.5
 u2  = 0.2 .* randn(n)
 gt  = @. f1(u1) + u2 * f2(u1)
+σn  = 0.01
 
-ys  = [SA[y] for y in gt]
+ys  = [SA[y + σn * randn()] for y in gt]
 us  = [(; u1 = u1[i], u2 = u2[i]) for i in 1:n];
 
 # ## Define RGP Components
@@ -72,13 +74,12 @@ function measurement(x, u, p, t)
 end
 
 # **Noise covariance**: the residual variances of both GPs, weighted by the
-# squared coefficients of the measurement. The observations are noise-free, so no
-# sensor noise is added.
+# squared coefficients of the measurement, plus the sensor noise variance.
 
 function R2(x, u, p, t)
     r1 = uncertainty_gp(p.a, u[1])
     r2 = uncertainty_gp(p.b, u[1])
-    return (r1 + u[2]^2 * r2) |> SMatrix{1, 1}
+    return (r1 + u[2]^2 * r2 + σn^2) |> SMatrix{1, 1}
 end
 
 # ## Construct and Train the Filter
@@ -111,7 +112,7 @@ band!(ax1,   ts,
       pred_μ .+ 2 .* pred_σ,
       pred_μ .- 2 .* pred_σ;
       color = (:orange, 0.3), label = "Posterior μ ± 2σ")
-scatter!(ax1, ts, gt; color = :red, markersize = 4, label = "Training data")
+scatter!(ax1, ts, first.(ys); color = :red, markersize = 4, label = "Training data")
 
 xlims!(ax1, extrema(ts))
 Legend(fig1[2, 1], ax1; orientation = :horizontal, framevisible = false, merge = true)
@@ -155,6 +156,10 @@ scatter!(axs[2], u1, f2.(u1); color = :red, label = "Training inputs")
 xlims!.(axs, Ref(extrema(b_plot)))
 Legend(fig2[2, 1:2], axs[1]; orientation = :horizontal, framevisible = false, merge = true)
 fig2
+
+# Both posteriors contain the ground truth within the training range. The band of
+# ``f_2`` is wider than that of ``f_1``, because ``f_2`` enters each measurement
+# only through the small gain ``u_2``.
 
 # !!! note
 #     `state(kf, :a)` and `covariance(kf, :a)` give direct access to the

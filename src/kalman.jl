@@ -46,14 +46,14 @@ Calculate the predicted measurement and innovation covariance.
 - `kf`: The Extended Kalman Filter.
 - `u`: The control input.
 - `x`: State estimate.
-- `R`: Covariance matrix.
+- `R`: Covariance of the state estimate.
 - `p`: Additional parameters passed to the filter.
 - `t`: Current time index.
 
 # Returns
 A named tuple `(;μ, Σ)` where:
-- `μ`: The expected measurement ``h(x^-, u, p, t)``.
-- `Σ`: The innovation covariance ``C \\Sigma^- C^T + R_2``.
+- `μ`: The predicted measurement ``h(x, u, p, t)``.
+- `Σ`: The innovation covariance ``C R C^\\top + R_2``, with measurement Jacobian ``C``.
 """
 function predict_kf(kf::LLPF.AbstractExtendedKalmanFilter, u, x = state(kf), R = covariance(kf), p = kf.p, t = index(kf))
     measurement_model = kf.measurement_model
