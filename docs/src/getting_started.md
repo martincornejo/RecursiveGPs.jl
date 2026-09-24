@@ -2,11 +2,12 @@
 
 ## Installation
 
-RecursiveGPs.jl is a registered Julia package. Install it from the Julia REPL:
+RecursiveGPs.jl is not yet registered in the General registry. Install it from
+GitHub:
 
 ```julia
 using Pkg
-Pkg.add("RecursiveGPs")
+Pkg.add(url = "https://github.com/martincornejo/RecursiveGPs.jl")
 ```
 
 The package depends on [AbstractGPs.jl](https://github.com/JuliaGaussianProcesses/AbstractGPs.jl)

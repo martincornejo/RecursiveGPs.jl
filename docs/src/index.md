@@ -15,15 +15,17 @@ matrix inversion at inference time.
 
 ## Installation
 
+RecursiveGPs.jl is not yet registered. Install it from GitHub:
+
 ```julia
 using Pkg
-Pkg.add("RecursiveGPs")
+Pkg.add(url = "https://github.com/martincornejo/RecursiveGPs.jl")
 ```
 
 Or from the Julia REPL:
 
 ```
-] add RecursiveGPs
+] add https://github.com/martincornejo/RecursiveGPs.jl
 ```
 
 ---
