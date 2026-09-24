@@ -67,19 +67,26 @@ function simulate(Fu, tend, p; fric = p.friction, supersample = 10, x0 = SA[0.0,
     return ts, first.(xs), last.(xs)
 end
 
-# ## Excitation
+# ## Experiment
+#
+# The experiment lasts 6 s. The filter learns from the first 3 s, and the rest is
+# held out to test the learned model.
 #
 # The applied force is a multisine, so the velocity changes sign repeatedly.
 # Friction is odd in ``v``, so a one-directional experiment constrains only half
-# the curve.
+# the curve. Between 3 s and 4 s the force is zero. Friction is then the only
+# force on the mass, which coasts to rest with deceleration ``F_f(v)/m``.
 
-Fu(t) = 120.0 * sinpi(2t / 0.6) + 60.0 * sinpi(2t / 0.23 + 0.3)
+Fu(t) = 3 <= t < 4 ? 0.0 : 120.0 * sinpi(2t / 0.6) + 60.0 * sinpi(2t / 0.23 + 0.3)
 
 ts, ss, vs = simulate(Fu, 6.0, params)
 
 Random.seed!(1)
 ys = [SA[v + params.σ_v * randn()] for v in vs]
-us = [SA[Fu(t)] for t in ts];
+us = [SA[Fu(t)] for t in ts]
+
+t_train = 3.0
+train = ts .<= t_train;
 
 # ## The RGP
 #
@@ -126,14 +133,14 @@ kf = build_filter(rgp, params)
 
 # ## Training
 #
-# A single pass. Each `kf(u, y)` runs one predict-correct cycle. The posterior is
-# stored at four times for the plot below.
+# A single pass over the training data. Each `kf(u, y)` runs one predict-correct
+# cycle. The posterior is stored at four times for the plot below.
 
-snap_times = [0.1, 0.3, 1.0, 6.0]
+snap_times = [0.1, 0.3, 1.0, t_train]
 snap_steps = round.(Int, snap_times ./ params.dt) .+ 1   # sample index of each snapshot
 snaps = Dict{Int, Any}()
 
-@time for (i, (u, y)) in enumerate(zip(us, ys))
+@time for (i, (u, y)) in enumerate(zip(us[train], ys[train]))
     kf(u, y)
     i in snap_steps && (snaps[i] = (copy(state(kf)), copy(covariance(kf))))
 end
@@ -150,7 +157,7 @@ end
 vplot = collect(range(-16.0, 18.0, length = 300))
 seen = [vs[1:n] for n in snap_steps]
 
-fig1 = Figure(size = (800, 560))
+fig1 = Figure(size = (800, 600))
 axs = [CairoMakie.Axis(fig1[cld(i, 2), mod1(i, 2)];
            title = "after $(snap_times[i]) s  ($(snap_steps[i]) samples)")
        for i in eachindex(snap_times)]
@@ -159,10 +166,10 @@ for (ax, n, visited) in zip(axs, snap_steps, seen)
     p = predict_gp(kf, vplot, snaps[n]..., :fric)
     σ = sqrt.(abs.(diag(p.Σ)))
     rug = visited[1:max(1, length(visited) ÷ 120):end]
-    band!(ax, vplot, p.μ .- 2σ, p.μ .+ 2σ; color = (colors.rgp, 0.25), label = "±2σ")
+    band!(ax, vplot, p.μ .- 2σ, p.μ .+ 2σ; color = (colors.rgp, 0.25), label = "Posterior μ ± 2σ")
     lines!(ax, vplot, params.friction.(vplot); color = colors.truth, linewidth = 2, label = "Ground truth")
-    lines!(ax, vplot, p.μ; color = colors.rgp, linewidth = 2, label = "RGP posterior mean")
-    scatter!(ax, rug, fill(-114.0, length(rug)); marker = '|', markersize = 7, color = (:gray, 0.45))
+    lines!(ax, vplot, p.μ; color = colors.rgp, linewidth = 2, label = "Posterior μ ± 2σ")
+    scatter!(ax, rug, fill(-114.0, length(rug)); marker = '|', markersize = 7, color = (:gray, 0.45), label = "Visited velocities" => (; markersize = 16))
 end
 
 xlims!.(axs, Ref(extrema(vplot)))
@@ -170,16 +177,16 @@ ylims!.(axs, -125, 125)
 axs[3].xlabel = axs[4].xlabel = "v [m/s]"
 axs[1].ylabel = axs[3].ylabel = "Ff [N]"
 hidexdecorations!.(axs[1:2]; grid = false)
-axislegend(axs[1]; position = :lt, framevisible = false)
+Legend(fig1[3, 1:2], axs[1]; orientation = :horizontal, framevisible = false, merge = true)
 fig1
 
 # ## Accuracy
 #
-# Measured over the velocity range the experiment covered. `coverage_2σ` is the
-# fraction of the curve inside the ±2σ band, which should be ``\approx 0.95`` if
-# the posterior is well calibrated.
+# Measured over the velocity range the training data covered. `coverage_2σ` is
+# the fraction of the curve inside the ±2σ band, which should be ``\approx 0.95``
+# if the posterior is well calibrated.
 
-lo, hi = extrema(vs)
+lo, hi = extrema(vs[train])
 vtest = collect(range(lo, hi, length = 200))
 post = predict_gp(kf, vtest, :fric)
 σtest = sqrt.(abs.(diag(post.Σ)))
@@ -189,8 +196,10 @@ err = post.μ .- params.friction.(vtest)
 
 # ## Re-simulation with the learned term
 #
-# The posterior mean is inserted into the physical model and the trajectory
-# re-simulated. The frictionless model is the starting point the RGP was added to.
+# The posterior mean is inserted into the physical model, and the full 6 s are
+# simulated from the applied force alone. The frictionless model is the starting
+# point the RGP was added to. The error is measured on the held-out part,
+# ``t > 3`` s, which the filter has not seen.
 
 ĝ = state(kf, :fric)
 f̂(v) = measurement_gp(rgp, ĝ, v)[1]
@@ -198,11 +207,15 @@ f̂(v) = measurement_gp(rgp, ĝ, v)[1]
 _, _, v_hybrid = simulate(Fu, 6.0, params; fric = f̂)
 _, _, v_nofric = simulate(Fu, 6.0, params; fric = v -> zero(v))
 
-@info "Re-simulation with the completed model" hybrid_rmse = rms(v_hybrid, vs) no_friction_rmse = rms(v_nofric, vs)
+test = .!train
+@info "Simulation on held-out data" hybrid_rmse = rms(v_hybrid[test], vs[test]) no_friction_rmse = rms(v_nofric[test], vs[test])
 
-fig2 = Figure(size = (800, 600))
+#-
+
+fig2 =Figure(size = (800, 600))
 axs = [CairoMakie.Axis(fig2[i, 1]; height = 215) for i in 1:2]
 
+vspan!.(axs, 0.0, t_train; color = (:gray, 0.15), label = "training data")
 lines!(axs[1], ts, first.(us); color = :black, linewidth = 1.5)
 lines!(axs[2], ts, v_nofric; color = colors.nofric, linewidth = 2, linestyle = :dash, label = "physics only (no friction)")
 lines!(axs[2], ts, vs; color = colors.truth, linewidth = 2, label = "ground truth")
@@ -218,6 +231,10 @@ hidexdecorations!(axs[1]; grid = false)
 Legend(fig2[3, 1], axs[2]; orientation = :horizontal, framevisible = false)
 resize_to_layout!(fig2)
 fig2
+
+# The shaded interval is the training data. After it, the completed model
+# predicts the coast-down during the pause and the response once the force
+# resumes. The frictionless model keeps the velocity it had at 3 s.
 
 # !!! note "Validity range"
 #     The learned term is only usable inside the velocity range the experiment
