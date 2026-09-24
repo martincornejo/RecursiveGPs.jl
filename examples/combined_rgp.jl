@@ -103,15 +103,15 @@ fig1 = Figure(size = (800, 450))
 ax1  = CairoMakie.Axis(fig1[1, 1]; title = "Combined RGP output", xlabel = "t", ylabel = "y")
 
 lines!(ax1,  ts, gt;     label = "Ground truth")
-lines!(ax1,  ts, pred_μ; color = :orange, label = "Posterior mean")
+lines!(ax1,  ts, pred_μ; color = :orange, label = "Posterior μ ± 2σ")
 band!(ax1,   ts,
       pred_μ .+ 2 .* pred_σ,
       pred_μ .- 2 .* pred_σ;
-      color = (:orange, 0.3))
+      color = (:orange, 0.3), label = "Posterior μ ± 2σ")
 scatter!(ax1, ts, gt; color = :red, markersize = 4, label = "Training data")
 
 xlims!(ax1, extrema(ts))
-axislegend(ax1)
+Legend(fig1[2, 1], ax1; orientation = :horizontal, framevisible = false, merge = true)
 fig1
 
 # ## Extract Individual Component Predictions
@@ -126,31 +126,31 @@ pred_b = predict_gp(kf, b_plot, :b)
 σ_a    = sqrt.(diag(pred_a.Σ))
 σ_b    = sqrt.(diag(pred_b.Σ))
 
-fig2 = Figure(size = (800, 500))
-axs  = [CairoMakie.Axis(fig2[i, 1]; xlabel = "b") for i in 1:2]
+fig2 = Figure(size = (800, 420))
+axs  = [CairoMakie.Axis(fig2[1, i]; xlabel = "b") for i in 1:2]
 
 axs[1].title = "Component a:  f₁(b) = exp(b)"
 axs[1].ylabel = "f₁(b)"
 lines!(axs[1], b_plot, f1.(b_plot);   label = "Ground truth")
-lines!(axs[1], b_plot, pred_a.μ;      color = :orange, label = "Posterior mean")
+lines!(axs[1], b_plot, pred_a.μ;      color = :orange, label = "Posterior μ ± 2σ")
 band!(axs[1],  b_plot,
       pred_a.μ .+ 2 .* σ_a,
       pred_a.μ .- 2 .* σ_a;
-      color = (:orange, 0.3))
+      color = (:orange, 0.3), label = "Posterior μ ± 2σ")
 scatter!(axs[1], u1, f1.(u1); color = :red, label = "Training inputs")
 
 axs[2].title = "Component b:  f₂(b) = 0.1 + 0.5b + 0.1sin(2πb)"
 axs[2].ylabel = "f₂(b)"
 lines!(axs[2], b_plot, f2.(b_plot);   label = "Ground truth")
-lines!(axs[2], b_plot, pred_b.μ;      color = :orange, label = "Posterior mean")
+lines!(axs[2], b_plot, pred_b.μ;      color = :orange, label = "Posterior μ ± 2σ")
 band!(axs[2],  b_plot,
       pred_b.μ .+ 2 .* σ_b,
       pred_b.μ .- 2 .* σ_b;
-      color = (:orange, 0.3))
+      color = (:orange, 0.3), label = "Posterior μ ± 2σ")
 scatter!(axs[2], u1, f2.(u1); color = :red, label = "Training inputs")
 
 xlims!.(axs, Ref(extrema(b_plot)))
-axislegend.(axs; position = :rb)
+Legend(fig2[2, 1:2], axs[1]; orientation = :horizontal, framevisible = false, merge = true)
 fig2
 
 # !!! note

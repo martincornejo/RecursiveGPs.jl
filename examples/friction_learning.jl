@@ -200,14 +200,23 @@ _, _, v_nofric = simulate(Fu, 6.0, params; fric = v -> zero(v))
 
 @info "Re-simulation with the completed model" hybrid_rmse = rms(v_hybrid, vs) no_friction_rmse = rms(v_nofric, vs)
 
-fig2 = Figure(size = (800, 360))
-ax = CairoMakie.Axis(fig2[1, 1]; xlabel = "t [s]", ylabel = "v [m/s]",
-    title = "Simulation with the learned friction term")
-lines!(ax, ts, v_nofric; color = colors.nofric, linewidth = 2, linestyle = :dash, label = "physics only (no friction)")
-lines!(ax, ts, vs; color = colors.truth, linewidth = 2, label = "ground truth")
-lines!(ax, ts, v_hybrid; color = colors.rgp, linewidth = 2, linestyle = :dot, label = "physics + RGP friction")
-xlims!(ax, extrema(ts))
-Legend(fig2[2, 1], ax; orientation = :horizontal, framevisible = false)
+fig2 = Figure(size = (800, 600))
+axs = [CairoMakie.Axis(fig2[i, 1]; height = 215) for i in 1:2]
+
+lines!(axs[1], ts, first.(us); color = :black, linewidth = 1.5)
+lines!(axs[2], ts, v_nofric; color = colors.nofric, linewidth = 2, linestyle = :dash, label = "physics only (no friction)")
+lines!(axs[2], ts, vs; color = colors.truth, linewidth = 2, label = "ground truth")
+lines!(axs[2], ts, v_hybrid; color = colors.rgp, linewidth = 2, linestyle = :dot, label = "physics + RGP friction")
+
+axs[1].title = "Simulation with the learned friction term"
+axs[1].ylabel = "Fu [N]"
+axs[2].ylabel = "v [m/s]"
+axs[2].xlabel = "t [s]"
+xlims!.(axs, Ref(extrema(ts)))
+linkxaxes!(axs...)
+hidexdecorations!(axs[1]; grid = false)
+Legend(fig2[3, 1], axs[2]; orientation = :horizontal, framevisible = false)
+resize_to_layout!(fig2)
 fig2
 
 # !!! note "Validity range"
