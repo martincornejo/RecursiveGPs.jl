@@ -1,7 +1,7 @@
 # # Hyperparameter Tuning
 #
-# The kernel hyperparameters and the measurement noise ``R_2`` determine how an
-# RGP generalises from data. This tutorial starts from an initial guess and tunes
+# The kernel hyperparameters and the sensor noise variance ``\sigma_n^2`` determine
+# how an RGP generalises from data. This tutorial starts from an initial guess and tunes
 # them by maximising the likelihood of the filter's one-step-ahead predictions,
 # using
 # [Optimization.jl](https://docs.sciml.ai/Optimization/stable/) with gradients from
@@ -42,7 +42,9 @@ ys = [SA[f(u) + 5e-3 * randn()] for u in us];
 # k(b, b') = \sigma^2 \exp\left(-\frac{(b - b')^2}{2\ell^2}\right)
 # ```
 #
-# Together with ``R_2`` this gives three hyperparameters to tune.
+# Together with the sensor noise variance ``\sigma_n^2`` this gives three
+# hyperparameters to tune. The measurement noise `R2` is the residual variance of
+# the GP plus ``\sigma_n^2``.
 #
 # `build_kf` constructs a fresh filter from a set of hyperparameters. It is called
 # inside the loss function, so it has to accept ForwardDiff dual numbers.
@@ -53,7 +55,7 @@ function build_kf(θ; n_basis = 20)
 
     dynamics(x, u, p, t)    = x
     measurement(x, u, p, t) = measurement_gp(p.rgp, x, u) |> SVector{1}
-    R2(x, u, p, t)          = @SMatrix [θ.R2]
+    R2(x, u, p, t)          = @SMatrix [uncertainty_gp(p.rgp, u) + θ.σn²]
 
     return ExtendedKalmanFilter((; rgp), dynamics, measurement, R2)
 end
@@ -72,7 +74,7 @@ end
 # times too high. The filter recovers the overall trend but treats the
 # oscillation as noise.
 
-θ_init  = (; σ² = 0.1, ℓ = 1.0, R2 = 1.0e-3)
+θ_init  = (; σ² = 0.1, ℓ = 1.0, σn² = 1.0e-3)
 kf_init = fit(θ_init);
 
 # ## Loss Function
@@ -80,13 +82,13 @@ kf_init = fit(θ_init);
 # `correct!` returns the log-likelihood of each measurement given all previous
 # data. The loss is their negative sum. Unlike a squared prediction error, the
 # likelihood also penalises a noise variance that is too large or too small, which
-# makes `R2` identifiable.
+# makes ``\sigma_n^2`` identifiable.
 #
 # The optimiser works on unconstrained parameters. `exp` maps them to positive
 # hyperparameters, and a small floor keeps the noise away from zero.
 
-to_θ(x) = (; σ² = exp(x[1]), ℓ = exp(x[2]), R2 = 1.0e-8 + exp(x[3]))
-to_x(θ) = log.([θ.σ², θ.ℓ, θ.R2])
+to_θ(x) = (; σ² = exp(x[1]), ℓ = exp(x[2]), σn² = 1.0e-8 + exp(x[3]))
+to_x(θ) = log.([θ.σ², θ.ℓ, θ.σn²])
 
 function loss(x, p)
     kf   = build_kf(to_θ(x))
@@ -115,7 +117,7 @@ prob = OptimizationProblem(OptimizationFunction(loss, AutoForwardDiff()), to_x(�
 sol  = solve(prob, LBFGS(linesearch = LineSearches.BackTracking()); reltol = 1.0e-6, callback = progress)
 
 θ_opt = to_θ(sol.u)
-@info "Tuned hyperparameters" σ² = θ_opt.σ² ℓ = θ_opt.ℓ R2 = θ_opt.R2 true_noise_variance = 2.5e-5
+@info "Tuned hyperparameters" σ² = θ_opt.σ² ℓ = θ_opt.ℓ σn² = θ_opt.σn² true_noise_variance = 2.5e-5
 
 # ## Before and After
 #

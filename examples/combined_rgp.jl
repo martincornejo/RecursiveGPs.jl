@@ -1,7 +1,8 @@
 # # Multi-Component RGPs
 #
-# This tutorial shows how to compose multiple RGPs into a single Extended
-# Kalman Filter to model outputs that depend on several latent functions.
+# A measurement can depend on several unknown functions. Each function is
+# represented by its own RGP, and one extended Kalman filter learns all of them
+# from the same measurements.
 #
 # ## Problem Setup
 #
@@ -10,8 +11,9 @@
 # y_t = f_1(u_1) + u_2 \cdot f_2(u_1)
 # ```
 # where ``f_1(b) = e^b`` and ``f_2(b) = 0.1 + 0.5b + 0.1\sin(2\pi b)``.
-# The input ``u_2`` is a scalar gain, so neither function is directly
-# observed — only their weighted sum is.
+# The input ``u_2`` is a scalar gain. Neither function is observed directly,
+# only their weighted sum. The two functions can be separated because ``u_2``
+# varies between measurements. The observations are noise-free.
 
 using RecursiveGPs
 using AbstractGPs
@@ -54,7 +56,7 @@ components = (; a = rgp_a, b = rgp_b);
 # The KF state is the concatenation of the two component states:
 # ``x = [g^{(a)}; g^{(b)}]``.
 #
-# **Dynamics**: identity (both GPs are stationary in the index domain).
+# **Dynamics**: identity, since both functions are constant in time.
 
 dynamics(x, u, p, t) = x
 
@@ -69,8 +71,9 @@ function measurement(x, u, p, t)
     return (μ1 + u[2] * μ2) |> SVector{1}
 end
 
-# **Noise covariance**: GP conditional variances, propagated through the
-# observation model using the chain rule of variance.
+# **Noise covariance**: the residual variances of both GPs, weighted by the
+# squared coefficients of the measurement. The observations are noise-free, so no
+# sensor noise is added.
 
 function R2(x, u, p, t)
     r1 = uncertainty_gp(p.a, u[1])
