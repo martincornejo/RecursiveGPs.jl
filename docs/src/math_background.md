@@ -1,28 +1,26 @@
 # Mathematical Background
 
-Many models contain a function that is hard to write down from first principles: a
-friction law, the open-circuit voltage curve of a battery, the efficiency map of a
-motor. Choosing a parametric form for it means guessing the shape in advance, and a
-wrong guess biases everything the model is used for. This page builds up a method
-that learns such a function from data while the system runs, reports how certain it
-is, and can sit inside a state estimator next to the rest of the model.
+Physical models often contain functions that are difficult to derive from first
+principles, such as a friction law, the open-circuit voltage curve of a battery, or
+the efficiency map of a motor. A parametric form for such a function has to be chosen
+in advance, and a wrong choice biases the model. This page describes how a Gaussian
+process represents such a function instead, how its recursive formulation allows online
+learning, and how it is combined with the states of a physical model in a Kalman
+filter.
 
 ## Gaussian process regression
 
-Gaussian process (GP) regression is a Bayesian machine learning method for learning a
-function from data [1]. It places a probability distribution over functions: a
-Gaussian distribution describes a random vector by a mean vector and a covariance
-matrix, and a GP describes a random function by a mean function and a covariance
-function. The prior distribution encodes assumptions such as how smooth the function
-is. Conditioning it on observations gives the posterior, whose mean is the estimate
-of the function and whose variance shows how well the data determines the function
-at each input.
+Gaussian process (GP) regression is a Bayesian, nonparametric machine learning method
+[1]. A GP is a probability distribution over functions. It generalises the
+multivariate Gaussian distribution, defined by a mean vector and a covariance matrix,
+to functions, defined by a mean function and a covariance function. The prior encodes
+assumptions about the function, for example its smoothness. Conditioning the prior on
+observations yields a posterior distribution over the function, from which an estimate
+and its uncertainty follow at any input.
 
-Unlike a parametric model, a GP does not fix the form of the function, and it
-reports the uncertainty of its estimate. GPs are therefore common where a function
-has to be learned from limited data and the reliability of the result matters, for
-example in system identification, surrogate modelling, Bayesian optimisation, and
-for unknown terms in physical models.
+GP regression requires no parametric form of the function, and the posterior variance
+quantifies the uncertainty of the estimate. Applications include system
+identification, surrogate modelling and Bayesian optimisation.
 
 ### The prior
 
@@ -32,34 +30,32 @@ A GP is written
 f \sim \mathcal{GP}\big(m(u),\, k(u, u')\big).
 ```
 
-The mean function ``m(u)`` is the expected value of ``f`` before any data is seen. It
-is often zero, or a simple model that the data should correct. The kernel
-``k(u, u')`` is the covariance between ``f(u)`` and ``f(u')``, and it carries the
-modelling assumptions: a large covariance between two inputs means their function
-values tend to move together, so the kernel decides how information from one
-observation spreads to nearby inputs. A common choice is the squared exponential
-kernel,
+The mean function ``m(u)`` is the expected value of ``f`` before any observation. It
+is commonly zero or a simple prior model. The kernel ``k(u, u')`` is the covariance
+between ``f(u)`` and ``f(u')``. It determines which functions are likely under the
+prior, and with it how the information of an observation propagates to neighbouring
+inputs. A common choice is the squared exponential kernel,
 
 ```math
-k(u, u') = \sigma^2 \exp\left(-\frac{(u - u')^2}{2\ell^2}\right).
+k(u, u') = \sigma^2 \exp\left(-\frac{(u - u')^2}{2\ell^2}\right),
 ```
 
-The variance ``\sigma^2`` sets how far ``f`` is expected to deviate from ``m``. The
-length scale ``\ell`` sets the distance over which values stay correlated: at
-``|u - u'| = \ell`` the correlation is ``e^{-1/2} \approx 0.61``, and beyond about
-``3\ell`` it is negligible. A short ``\ell`` allows fast variations, a long ``\ell``
-enforces a smooth function. Other kernels encode other assumptions, such as periodic
-or less smooth behaviour, and sums and products of kernels combine them.
+with prior variance ``\sigma^2`` and length scale ``\ell``. The correlation between
+``f(u)`` and ``f(u')`` is ``e^{-1/2} \approx 0.61`` at ``|u - u'| = \ell`` and
+negligible beyond about ``3\ell``. Short length scales permit rapid variation, long
+ones enforce smooth functions. Other kernels express other properties, such as
+periodicity or lower smoothness, and kernels can be combined by addition and
+multiplication.
 
-Formally, a GP is a collection of random variables ``f(u)``, one per input, any
-finite number of which are jointly Gaussian. For inputs ``U = \{u_1, \ldots, u_n\}``,
+Formally, a GP is a collection of random variables ``f(u)``, any finite number of
+which have a joint Gaussian distribution. For inputs ``U = \{u_1, \ldots, u_n\}``,
 
 ```math
 f(U) \sim \mathcal{N}\big(m(U),\, K_{UU}\big), \qquad [K_{UU}]_{ij} = k(u_i, u_j).
 ```
 
-Learning a function therefore reduces to conditioning a Gaussian vector, which has a
-closed-form solution.
+Regression with a GP therefore reduces to conditioning a multivariate Gaussian, which
+has a closed-form solution.
 
 ### Conditioning on data
 
@@ -75,7 +71,7 @@ function values ``f(U^*)`` at test inputs ``U^*`` are jointly Gaussian,
 \right),
 ```
 
-where ``K_{U^*U}`` holds the kernel evaluations between test and training inputs.
+where ``K_{U^*U}`` contains the kernel evaluations between test and training inputs.
 Conditioning on ``Y`` gives the posterior ``f(U^*) \mid Y \sim \mathcal{N}(\mu^*, \Sigma^*)``,
 
 ```math
@@ -85,35 +81,33 @@ Conditioning on ``Y`` gives the posterior ``f(U^*) \mid Y \sim \mathcal{N}(\mu^*
 \end{aligned}
 ```
 
-The posterior mean is the prior mean plus a correction, weighted by how strongly each
-test input correlates with the training inputs. Near the data the correction is large
-and the variance drops below the prior. More than a few length scales away,
-``K_{U^*U}`` is close to zero, so the mean returns to ``m`` and the variance to
-``\sigma^2``. The noise variance ``\sigma_n^2`` decides how closely the mean follows
-individual observations: with a small ``\sigma_n^2`` it interpolates them, with a
-large one it averages over them.
+The posterior mean adds to the prior mean a correction that is weighted by the
+covariance between test and training inputs. Close to the training inputs, the
+posterior variance falls below the prior variance. Several length scales away,
+``K_{U^*U} \approx 0`` and the posterior reverts to the prior. The noise variance
+``\sigma_n^2`` sets the degree of smoothing: for small ``\sigma_n^2`` the posterior
+mean interpolates the observations, for large ``\sigma_n^2`` it averages over them.
 
-The hyperparameters ``\sigma^2``, ``\ell`` and ``\sigma_n^2`` are usually chosen by
-maximising the likelihood of the observations under this model.
+The hyperparameters ``\sigma^2``, ``\ell`` and ``\sigma_n^2`` are commonly chosen by
+maximising the marginal likelihood of the observations.
 
-### Limits for online use
+### Limitations for online use
 
-The inverse is ``n \times n`` for ``n`` observations, so the cost grows as
-``\mathcal{O}(n^3)`` and all past observations have to be stored to predict at new
-inputs. A system sampled at 1 kHz produces 3.6 million samples per hour, so batch GP
-regression cannot keep up with it.
+Inverting the ``n \times n`` matrix costs ``\mathcal{O}(n^3)``, and all observations
+must be stored for prediction. At a sampling rate of 1 kHz, one hour of operation
+yields ``3.6 \cdot 10^6`` samples, which rules out batch GP regression for online use.
 
-Batch GP regression also needs direct samples of ``f``. Inside a physical model,
-``f`` is usually not measured directly. A friction force, for example, only shows up
-through the velocity it causes, and its input, the velocity, is itself an estimated
-state. Learning ``f`` in that setting requires treating the function as part of the
-state estimation problem.
+Batch GP regression also requires direct observations of ``f``. In a physical model,
+the unknown function is often observed only indirectly. A friction force, for
+instance, affects the measured velocity through the equation of motion, and its
+argument, the velocity, is itself an estimated state. Learning such a function
+requires including it in the state estimation problem.
 
 ## The recursive GP
 
-Huber [2] reformulated GP regression as a Kalman filtering problem, which addresses
-both limits. The function is summarised by a fixed-size Gaussian state, and each new
-observation updates that state and is then discarded.
+Huber [2] formulated GP regression as a Kalman filtering problem. The function is
+represented by a Gaussian state of fixed dimension, which is updated with each
+observation. Past observations are not stored.
 
 ### Basis points
 
@@ -124,15 +118,15 @@ by its values there, ``g = f(b_0)``. Under the GP prior,
 g \sim \mathcal{N}(\mu_0, \Sigma_0), \qquad \mu_0 = m(b_0), \quad \Sigma_0 = K_{b_0 b_0} + \varepsilon I,
 ```
 
-where a small jitter ``\varepsilon`` keeps ``\Sigma_0`` invertible. The size of ``g``
-is set by ``N`` and does not grow with the data. The basis points act as fixed
-training inputs whose function values are unknown and estimated.
+where a small jitter ``\varepsilon`` keeps ``\Sigma_0`` invertible. The dimension of
+``g`` is fixed by ``N``. The basis points take the role of training inputs whose
+function values are unknown and estimated.
 
 ### Function values from the basis values
 
-To learn ``g`` from an observation at an arbitrary input ``u``, the function value at
-``u`` has to be expressed through ``g``. Because ``g`` and ``f(u)`` are jointly
-Gaussian under the prior, ``f(u)`` given ``g`` is Gaussian with
+An observation at an arbitrary input ``u`` is related to ``g`` through the conditional
+distribution of ``f(u)`` given ``g``. Since ``g`` and ``f(u)`` are jointly Gaussian
+under the prior, ``f(u) \mid g`` is Gaussian with
 
 ```math
 \begin{aligned}
@@ -141,46 +135,43 @@ Gaussian under the prior, ``f(u)`` given ``g`` is Gaussian with
 \end{aligned}
 ```
 
-This is the GP posterior from above, with the basis points as noise-free training
-inputs. ``H(u)`` is a row of interpolation weights: the function at ``u`` is a
-weighted sum of the nearby basis values. The RGP is therefore a linear model in the
-``N`` weights ``g``, with basis functions ``H(u)`` derived from the kernel, which
-corresponds to the weight-space view of GP regression [1]. The residual variance ``r(u)`` is the part
-of ``f(u)`` that the basis values cannot explain. It is zero at the basis points,
-grows between them, and stays small when the basis spacing is well below the length
-scale.
+This is the GP posterior of the previous section, with the basis points as noise-free
+training inputs. ``H(u)`` contains interpolation weights, and the conditional mean is
+a weighted sum of the basis values. The RGP is thus a linear model in the ``N``
+weights ``g`` with basis functions ``H(u)`` derived from the kernel, which corresponds
+to the weight-space view of GP regression [1]. The residual variance ``r(u)`` is the
+variance of ``f(u)`` not explained by ``g``. It vanishes at the basis points and
+increases between them, and it remains small for a spacing well below ``\ell``.
 
 ### Observation model
 
-An observation ``y_t`` of ``f`` at input ``u_t`` then becomes a linear measurement of
-the state ``g``:
+An observation ``y_t`` at input ``u_t`` is a linear measurement of ``g``,
 
 ```math
 y_t = m(u_t) + H(u_t)\,(g - \mu_0) + \epsilon_t, \qquad
-\epsilon_t \sim \mathcal{N}(0,\, R_2), \qquad R_2 = r(u_t) + \sigma_n^2
+\epsilon_t \sim \mathcal{N}(0,\, R_2), \qquad R_2 = r(u_t) + \sigma_n^2.
 ```
 
-The measurement noise ``R_2`` has two sources: the error of representing ``f`` by its
-basis values, and the sensor noise. Leaving out either one makes the filter treat the
-data as more precise than it is.
+The measurement noise ``R_2`` comprises the residual variance of the basis
+representation and the sensor noise variance. Omitting either term makes the filter
+overconfident.
 
 ### Kalman filter recursion
 
-Let ``\hat g_t`` and ``P_t`` be the mean and covariance of ``g`` after ``t``
-observations, starting from ``\hat g_0 = \mu_0`` and ``P_0 = \Sigma_0``. Between
-observations, the function is modelled as a random walk,
+Let ``\hat g_t`` and ``P_t`` denote the mean and covariance of ``g`` after ``t``
+observations, with ``\hat g_0 = \mu_0`` and ``P_0 = \Sigma_0``. The function is
+modelled as a random walk,
 
 ```math
 g_t = g_{t-1} + w_t, \qquad w_t \sim \mathcal{N}(0, R_1).
 ```
 
-With ``R_1 = 0`` the function is constant in time, and the recursion performs GP
-regression on the basis. A nonzero ``R_1`` lets the function drift. The covariance
-then grows between observations, so recent data weighs more than old data. This
-tracks a function that changes over time, such as friction that varies with
-temperature or wear.
+For ``R_1 = 0`` the function is constant in time, and the filter performs GP
+regression on the basis. For ``R_1 > 0`` the covariance increases between
+observations. Older data is discounted, and the filter tracks a time-varying
+function, for example friction that changes with temperature or wear.
 
-Each observation corrects the state with the Kalman update, using ``H_t = H(u_t)``:
+The correction step for an observation at ``u_t``, with ``H_t = H(u_t)``, is
 
 ```math
 \begin{aligned}
@@ -192,105 +183,102 @@ P_t &= P_{t|t-1} - K_t H_t P_{t|t-1}
 ```
 
 ``S_t`` is the variance of the predicted measurement. The gain ``K_t`` is large for
-basis values that correlate strongly with ``u_t`` and are still uncertain, so each
-observation updates the function near its input and leaves distant parts unchanged.
-The measurement is linear in ``g``, so the update is exact and involves no
-linearisation.
+basis values that are strongly correlated with ``f(u_t)`` and still uncertain, and an
+observation changes the function mainly in the vicinity of ``u_t``. Since the
+measurement is linear in ``g``, the update is exact.
 
 ### Prediction at new inputs
 
-The function at any query points ``b`` follows from ``\hat g_t`` and ``P_t``
-through the same conditional:
+The posterior at query points ``b`` follows from ``\hat g_t`` and ``P_t`` through the
+same conditional,
 
 ```math
 \begin{aligned}
 \mu^* &= m(b) + H^*(\hat g_t - \mu_0), \qquad H^* = K_{b b_0}\,\Sigma_0^{-1} \\
-\Sigma^* &= H^* P_t H^{*\top} + K_{bb} - H^* K_{b_0 b}
+\Sigma^* &= H^* P_t H^{*\top} + K_{bb} - H^* K_{b_0 b}.
 \end{aligned}
 ```
 
-The first term of ``\Sigma^*`` is the remaining uncertainty in the basis values, the
-second the residual between basis points. ``\Sigma^*`` excludes the sensor noise, so
-it describes ``f`` itself. Before any data, ``P_0 = \Sigma_0`` and ``\Sigma^*``
-reduces to the prior ``K_{bb}``.
+The first term of ``\Sigma^*`` is the uncertainty of the basis values, the second the
+residual between basis points. ``\Sigma^*`` does not include sensor noise and thus
+describes ``f``. For ``P_0 = \Sigma_0``, ``\Sigma^*`` equals the prior covariance
+``K_{bb}``.
 
 ### Approximation and basis choice
 
 The RGP replaces the GP by a finite-dimensional model in which ``f`` is determined by
-``g`` up to the residual ``r``. It agrees with full GP regression when the basis is
-dense relative to ``\ell``, because ``r`` then vanishes. This gives two rules for
-choosing the basis:
+``g`` up to the residual ``r``. For a basis that is dense relative to ``\ell``, ``r``
+vanishes and the RGP coincides with full GP regression. Two requirements on the basis
+follow:
 
-- The basis has to span the inputs the data visits. A few length scales outside the
-  basis range, ``H(u)`` is close to zero, so ``f(u)`` stays at the prior no matter
-  how much data arrives there.
-- The spacing has to be small compared to ``\ell``. With coarse spacing, ``r(u)``
-  between basis points becomes large and features narrower than the spacing cannot
-  be represented.
+- The basis must cover the inputs visited by the data. More than a few length scales
+  outside the basis, ``H(u) \approx 0`` and ``f(u)`` remains at the prior regardless
+  of the data.
+- The spacing must be small compared to ``\ell``. For a coarse spacing, ``r(u)`` is
+  large between basis points, and features narrower than the spacing cannot be
+  represented.
 
-A denser basis improves the approximation and enlarges the state, so the choice
-trades accuracy against computation.
+The number of basis points sets the balance between approximation accuracy and the
+dimension of the state.
 
 ## Coupling a GP to a physical model
 
-Because ``g`` is a Gaussian state like any other, it can be stacked with the physical
-states ``s`` of a model, ``x = [s;\; g]``. A single filter then estimates the states
-and the unknown function together, from the same measurements. A model with known
-structure and one unknown term, such as an equation of motion with unknown friction,
-is completed this way while the system runs.
+The basis values ``g`` can be stacked with the states ``s`` of a physical model,
+``x = [s;\; g]``. A single filter then estimates the states and the unknown function
+from the same measurements, for example the velocity of a mass and the friction force
+acting on it.
 
-The GP input is often itself a state, for example friction evaluated at the estimated
-velocity ``v``. The model is then nonlinear in ``x``, and an extended Kalman filter
-linearises it at the current estimate. The Jacobian with respect to ``g`` is
-``H(v)``, and the Jacobian with respect to ``v`` contains the slope of the GP mean.
+The GP input is often a state itself, such as the velocity ``v`` in a friction model.
+The model is then nonlinear in ``x``, and the extended Kalman filter linearises it
+around the current estimate. The Jacobian with respect to ``g`` is ``H(v)``, and the
+Jacobian with respect to ``v`` contains the derivative of the GP mean.
 
-The unknown function can enter the model in two places, and ``r`` goes with it:
+The residual variance ``r`` is assigned according to where the function enters the
+model:
 
 - In the measurement equation, ``r(u)`` is added to ``R_2`` as above.
-- In the dynamics, ``r`` enters the process noise of the state it drives. For
-  ``v_{t+1} = v_t + \frac{\Delta t}{m}\big(F_u - F_f(v_t)\big)``, the contribution is
-  ``(\Delta t / m)^2\, r(v_t)`` on ``v``.
+- In the dynamics, ``r`` is added to the process noise of the state it drives. For
+  ``v_{t+1} = v_t + \frac{\Delta t}{m}\big(F_u - F_f(v_t)\big)``, the contribution to
+  the process noise of ``v`` is ``(\Delta t / m)^2\, r(v_t)``.
 
-In the second case no measurement depends on ``g`` directly, and the function is
-learned indirectly. The dynamics Jacobian couples ``v`` and ``g`` and builds a
-cross-covariance between them. When the measured velocity deviates from its
-prediction, the filter corrects ``g`` through that cross-covariance, in the part of
-the function evaluated at the current velocity.
+In the second case, ``g`` does not enter any measurement. The dynamics Jacobian
+couples ``v`` and ``g`` and creates a cross-covariance between them. A velocity
+innovation then corrects ``g`` through this cross-covariance, mainly at the basis
+points near the current velocity.
 
-## Several GPs in one model
+## Multiple GPs in one model
 
-A measurement can depend on more than one unknown function. The terminal voltage of a
-battery, for example, depends on the open-circuit voltage and on a resistance times
-the current, both functions of the state of charge. In general form,
+A measurement can depend on several unknown functions. The terminal voltage of a
+battery, for example, depends on the open-circuit voltage and on the product of a
+resistance and the current, both functions of the state of charge. A generic form is
 
 ```math
 y = f_a(u_1) + u_2\, f_b(u_1).
 ```
 
-Each function gets its own RGP, and the state stacks their basis values,
-``x = [g_a;\; g_b]``. The measurement row is ``[H_a(u_1),\; u_2 H_b(u_1)]``, and the
-residual variances combine as
+Each function is represented by its own RGP, and the state contains both sets of
+basis values, ``x = [g_a;\; g_b]``. The measurement row is
+``[H_a(u_1),\; u_2 H_b(u_1)]``, and the measurement noise is
 
 ```math
 R_2 = r_a(u_1) + u_2^2\, r_b(u_1) + \sigma_n^2.
 ```
 
-A single measurement constrains only the combination ``f_a + u_2 f_b``, so one sample
-cannot separate the two functions. The prior covariance is block diagonal, and each
-update adds cross-covariance between ``g_a`` and ``g_b``. Measurements with different
-values of ``u_2`` at the same ``u_1`` separate them, so the data has to vary ``u_2``
-for both functions to be identifiable.
+A single measurement constrains only ``f_a + u_2 f_b``. The prior covariance is block
+diagonal, but each update introduces cross-covariance between ``g_a`` and ``g_b``.
+The two functions are identifiable only if ``u_2`` varies across measurements with
+similar ``u_1``.
 
 ## Computational cost
 
 The state has ``N`` entries per GP, independent of the number of observations. The
-correction for a scalar measurement costs ``\mathcal{O}(N^2)``. An extended Kalman
-filter that propagates the covariance with a dense Jacobian ``A`` forms
-``A P A^\top`` at every step, which costs ``\mathcal{O}(N^3)``. Processing ``n``
-observations therefore costs ``\mathcal{O}(n N^3)`` time and ``\mathcal{O}(N^2)``
-memory, compared to ``\mathcal{O}(n^3)`` time and ``\mathcal{O}(n^2)`` memory for
-batch GP regression. The cost per observation is constant, so the filter can run at
-the sampling rate of the system.
+correction step for a scalar measurement costs ``\mathcal{O}(N^2)``. The prediction
+step of an extended Kalman filter with a dense Jacobian ``A`` computes
+``A P A^\top`` at ``\mathcal{O}(N^3)``. Processing ``n`` observations thus requires
+``\mathcal{O}(n N^3)`` time and ``\mathcal{O}(N^2)`` memory, compared with
+``\mathcal{O}(n^3)`` time and ``\mathcal{O}(n^2)`` memory for batch GP regression.
+With a constant cost per observation, the filter can run at the sampling rate of the
+system.
 
 ## Correspondence to the package
 
@@ -305,8 +293,8 @@ the sampling rate of the system.
 
 !!! note
     The single-RGP constructor `ExtendedKalmanFilter(rgp)` sets ``R_2 = r(u_t)`` and
-    leaves out the sensor noise. For noisy data, build the filter with the
-    component constructor and return `uncertainty_gp(rgp, u) + σn^2` from `R2`.
+    omits the sensor noise. For noisy data, build the filter with the multi-component
+    constructor and return `uncertainty_gp(rgp, u) + σn^2` from `R2`.
 
 ## References
 
