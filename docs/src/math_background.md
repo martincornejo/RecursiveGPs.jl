@@ -289,6 +289,7 @@ system.
 | ``r(u)`` | [`uncertainty_gp`](@ref) |
 | ``\mu^*``, ``\Sigma^*`` | [`predict_gp`](@ref) |
 | Predicted measurement and ``S_t`` | [`predict_kf`](@ref) |
+| ``\hat g``, ``P`` | `state(kf)`, `covariance(kf)` (fields `x`, `R` of the filter) |
 | ``R_1``, ``R_2`` | `R1`, `R2` of the `ExtendedKalmanFilter` |
 | ``\sigma_n`` | keyword `σn` of `ExtendedKalmanFilter(rgp; σn)` |
 
