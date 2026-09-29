@@ -1,20 +1,5 @@
 # Getting Started
 
-## Installation
-
-RecursiveGPs.jl is not yet registered in the General registry. Install it from
-GitHub:
-
-```julia
-using Pkg
-Pkg.add(url = "https://github.com/martincornejo/RecursiveGPs.jl")
-```
-
-The package depends on [AbstractGPs.jl](https://github.com/JuliaGaussianProcesses/AbstractGPs.jl)
-for kernel definitions and
-[LowLevelParticleFilters.jl](https://github.com/baggepinnen/LowLevelParticleFilters.jl)
-for the Kalman Filter backend.
-
 ## A first example
 
 The following example covers the basic workflow of the package. A GP prior is placed

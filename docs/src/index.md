@@ -20,49 +20,18 @@ measurements.
 
 ## Installation
 
-RecursiveGPs.jl is not yet registered. Install it from GitHub:
+To install RecursiveGPs.jl, use the Julia package manager:
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/martincornejo/RecursiveGPs.jl")
+Pkg.add("RecursiveGPs")
 ```
-
-## Example
-
-Learn a function from noisy samples, one sample at a time:
-
-```julia
-using RecursiveGPs, AbstractGPs, StaticArrays
-
-# Noisy samples of a function to learn
-f(u) = 0.5u + 0.1 * sinpi(2u)
-us = 0.1 .+ 0.7 .* rand(100)
-ys = [SA[f(u) + 0.005 * randn()] for u in us]
-
-# GP prior, represented at 21 basis points
-rgp = RGP(0.1 * with_lengthscale(SEKernel(), 0.4), collect(range(0, 1, length = 21)))
-
-# Kalman filter whose state is the GP at the basis points
-kf = ExtendedKalmanFilter(rgp; σn = 0.005)
-
-# Learn online
-for (u, y) in zip(us, ys)
-    kf(u, y)
-end
-
-# Posterior mean and covariance of f
-post = predict_gp(kf, range(0, 1, length = 200))
-```
-
-Models with several GPs or with physical states use the multi-component constructor,
-`ExtendedKalmanFilter(components, dynamics, measurement, R2)`, with arbitrary
-dynamics and measurement functions.
 
 ## Contents
 
 | Section | Description |
 |---------|-------------|
-| [Getting Started](@ref) | Installation and a first example with figure, step by step |
+| [Getting Started](@ref) | A first example with figure, step by step |
 | [Mathematical Background](@ref) | GP regression, the recursive GP, and coupling to physical models |
 | [Tutorials](@ref "Multi-Component RGPs") | Worked examples with executed code and figures |
 | [API Reference](@ref) | Docstrings of all exported functions |
