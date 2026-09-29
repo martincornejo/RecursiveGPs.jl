@@ -1,6 +1,7 @@
 # RecursiveGPs.jl
 
-[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://martincornejo.github.io/RecursiveGPs.jl/dev/)
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://martincornejo.github.io/RecursiveGPs.jl/stable/)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://martincornejo.github.io/RecursiveGPs.jl/dev/)
 [![CI](https://github.com/martincornejo/RecursiveGPs.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/martincornejo/RecursiveGPs.jl/actions/workflows/CI.yml)
 
 RecursiveGPs.jl implements recursive Gaussian process (RGP) regression
@@ -23,11 +24,11 @@ measurements.
 
 ## Installation
 
-RecursiveGPs.jl is not yet registered. Install it from GitHub:
+To install RecursiveGPs.jl, use the Julia package manager:
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/martincornejo/RecursiveGPs.jl")
+Pkg.add("RecursiveGPs")
 ```
 
 ## Example
@@ -63,13 +64,13 @@ dynamics and measurement functions.
 
 ## Documentation
 
-The [documentation](https://martincornejo.github.io/RecursiveGPs.jl/dev/) contains
-a [theoretical introduction](https://martincornejo.github.io/RecursiveGPs.jl/dev/math_background/)
+The [documentation](https://martincornejo.github.io/RecursiveGPs.jl/stable/) contains
+a [theoretical introduction](https://martincornejo.github.io/RecursiveGPs.jl/stable/math_background/)
 to GP regression and the recursive GP, and the following tutorials:
 
-- [Multi-Component RGPs](https://martincornejo.github.io/RecursiveGPs.jl/dev/tutorials/combined_rgp/): several functions in one measurement
-- [Hyperparameter Tuning](https://martincornejo.github.io/RecursiveGPs.jl/dev/tutorials/hyperparameter_tuning/): maximum likelihood with automatic differentiation
-- [Learning Missing Physics](https://martincornejo.github.io/RecursiveGPs.jl/dev/tutorials/friction_learning/): an unknown friction law in an equation of motion
+- [Multi-Component RGPs](https://martincornejo.github.io/RecursiveGPs.jl/stable/tutorials/combined_rgp/): several functions in one measurement
+- [Hyperparameter Tuning](https://martincornejo.github.io/RecursiveGPs.jl/stable/tutorials/hyperparameter_tuning/): maximum likelihood with automatic differentiation
+- [Learning Missing Physics](https://martincornejo.github.io/RecursiveGPs.jl/stable/tutorials/friction_learning/): an unknown friction law in an equation of motion
 
 ## License
 
